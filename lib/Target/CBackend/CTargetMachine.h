@@ -59,7 +59,15 @@ public:
   addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
                       raw_pwrite_stream *DwoOut, CodeGenFileType FileType,
                       bool DisableVerify = true,
-                      MachineModuleInfoWrapperPass *MMI = nullptr) override;
+                      MachineModuleInfoWrapperPass *MMI = nullptr);
+//  bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
+//                                          raw_pwrite_stream &ta, //TA文件
+//                                          raw_pwrite_stream &main, //main文件
+//                                          raw_pwrite_stream &ta_h, //ta.h文件
+//                                          raw_pwrite_stream *DwoOut,
+//                                          CodeGenFileType FileType,
+//                                          bool DisableVerify,
+//                                          MachineModuleInfoWrapperPass *MMI)
 
   // TargetMachine interface
   const TargetSubtargetInfo *getSubtargetImpl(const Function &) const override;

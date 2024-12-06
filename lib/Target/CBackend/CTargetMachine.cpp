@@ -15,15 +15,21 @@
 #include "CBackend.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/Transforms/Utils.h"
+#include <iostream>
 
 namespace llvm {
 
 bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
-                                         raw_pwrite_stream &Out,
+                                         raw_pwrite_stream &Out, //TA文件
+                                        //  raw_pwrite_stream &main, //main文件
+                                        //  raw_pwrite_stream &ta_h, //ta.h文件
                                          raw_pwrite_stream *DwoOut,
                                          CodeGenFileType FileType,
                                          bool DisableVerify,
                                          MachineModuleInfoWrapperPass *MMI) {
+
+  // std::cout << "yyyyyyyyyyyyyy"<<std::endl;
+
 
   if (FileType != CodeGenFileType::CGFT_AssemblyFile)
     return true;
@@ -43,7 +49,13 @@ bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   // Lower vector operations into shuffle sequences
   PM.add(createExpandReductionsPass());
 
-  PM.add(new llvm_cbe::CWriter(Out));
+  //ta.c,main.c, ta.h文件输出
+  if(DwoOut == nullptr){
+    PM.add(new llvm_cbe::CWriter(Out, Out, true));
+  }else {
+    PM.add(new llvm_cbe::CWriter(Out, *DwoOut, false));
+  }
+  
   return false;
 }
 

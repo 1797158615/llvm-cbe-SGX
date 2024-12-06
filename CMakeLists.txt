@@ -15,9 +15,14 @@ if (NOT DEFINED LLVM_VERSION_MAJOR)
   set (CMAKE_CXX_STANDARD 17)
 endif()
 
+# 添加 Google Test
+find_package(GTest REQUIRED)
+include_directories(${GTEST_INCLUDE_DIRS})
+
 add_subdirectory(lib)
 add_subdirectory(tools)
 
 if( LLVM_INCLUDE_TESTS )
   add_subdirectory(unittests)
 endif()
+

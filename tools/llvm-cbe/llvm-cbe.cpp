@@ -12,7 +12,8 @@
 // or C code, given LLVM bitcode.
 //
 //===----------------------------------------------------------------------===//
-
+#include <iostream>
+#include <string>
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/CommandFlags.h"
@@ -40,11 +41,13 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/TargetParser/Host.h"
 #include "llvm/TargetParser/SubtargetFeature.h"
 #include <llvm/Config/llvm-config.h>
 #include <memory>
+#include <fstream>
 using namespace llvm;
 
 static codegen::RegisterCodeGenFlags CGF;
@@ -60,6 +63,7 @@ extern "C" void LLVMInitializeCBackendTargetMC();
 static cl::opt<std::string>
     InputFilename(cl::Positional, cl::desc("<input bitcode>"), cl::init("-"));
 
+//ta.c文件
 static cl::opt<std::string> OutputFilename("o", cl::desc("Output filename"),
                                            cl::value_desc("filename"));
 
@@ -98,6 +102,7 @@ static inline std::string GetFileNameRoot(const std::string &InputFilename) {
   return outputFilename;
 }
 
+//ta.c文件
 static ToolOutputFile *GetOutputStream(const char *TargetName,
                                        Triple::OSType OS,
                                        const char *ProgName) {
@@ -107,12 +112,17 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
       OutputFilename = "-";
     else {
       OutputFilename = GetFileNameRoot(InputFilename);
+      std::cout << OutputFilename <<std::endl;
 
       switch (codegen::getFileType()) {
       case CodeGenFileType::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
-          if (TargetName[1] == 0)
-            OutputFilename += ".cbe.c";
+          if (TargetName[1] == 0){
+            OutputFilename += "cbe.c";
+            //c代码输出的文件名字
+            std::cout << OutputFilename <<std::endl;
+          }
+            
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
             OutputFilename += ".cpp";
           else
@@ -148,8 +158,14 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
   // Open the file.
   std::error_code error;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
+
+  std::cout << "Binary:"<<Binary <<std::endl;
+
   if (Binary)
     OpenFlags |= sys::fs::OF_Text;
+  // OutputFilename = "/home/yxk/t.cbe.c";
+  // std::cout << Binary <<std::endl;
+
   ToolOutputFile *FDOut =
       new ToolOutputFile(OutputFilename.c_str(), error, OpenFlags);
   if (error) {
@@ -160,6 +176,71 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
 
   return FDOut;
 }
+
+//main.c文件
+static ToolOutputFile *GetMainStream(){
+  // Decide if we need "binary" output.
+  // bool Binary = false;
+  // switch (codegen::getFileType()) {
+  // case CodeGenFileType::CGFT_AssemblyFile:
+  //   break;
+  // case CodeGenFileType::CGFT_ObjectFile:
+  // case CodeGenFileType::CGFT_Null:
+  //   Binary = true;
+  //   break;
+  // }
+
+  std::string OutMainFilename = "main.c";
+  // Open the file.
+  std::error_code error;
+  sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
+  // if (Binary)
+  //   OpenFlags |= sys::fs::OF_Text;
+  // OutMainFilename = "/home/yxk/t.cbe.c";
+  ToolOutputFile *FDOut =
+      new ToolOutputFile(OutMainFilename.c_str(), error, OpenFlags);
+  if (error) {
+    errs() << error.message() << '\n';
+    delete FDOut;
+    return 0;
+  }
+
+  return FDOut;
+}
+//ta.h文件
+static ToolOutputFile *GetTA_hStream(){
+  // std::cout << "cuowu" <<std::endl;
+  // Decide if we need "binary" output.
+  bool Binary = false;
+  switch (codegen::getFileType()) {
+  case CodeGenFileType::CGFT_AssemblyFile:
+    break;
+  case CodeGenFileType::CGFT_ObjectFile:
+  case CodeGenFileType::CGFT_Null:
+    Binary = true;
+    break;
+  }
+
+  std::string OutTA_hFilename = GetFileNameRoot(InputFilename);
+  OutTA_hFilename += ".h";
+  // Open the file.
+  std::error_code error;
+  sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
+  if (Binary)
+    OpenFlags |= sys::fs::OF_Text;
+  std::cout << OutTA_hFilename <<std::endl;
+  ToolOutputFile *FDOut =
+      new ToolOutputFile(OutTA_hFilename.c_str(), error, OpenFlags);
+  if (error) {
+    errs() << error.message() << '\n';
+    // std::cout << "cuowu" <<std::endl;
+    delete FDOut;
+    return 0;
+  }
+
+  return FDOut;
+}
+//--------------------------------------------------
 
 static LLVMContext TheContext;
 
@@ -313,9 +394,18 @@ static int compileModule(char **argv, LLVMContext &Context) {
   Target.setMCUseLoc(false);  */
 
   // Jackson Korba 9/30/14
+  //ta.c文件
   std::unique_ptr<ToolOutputFile> Out(
       GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
   if (!Out)
+    return 1;
+ //main文件
+  std::unique_ptr<ToolOutputFile> MOut(GetMainStream());
+  if (!MOut)
+    return 1;
+  //ta.h文件
+  std::unique_ptr<ToolOutputFile> TA_hOut(GetTA_hStream());
+  if (!TA_hOut)
     return 1;
 
   // Build up all of the passes that we want to do to the module.
@@ -335,8 +425,35 @@ static int compileModule(char **argv, LLVMContext &Context) {
              << ": warning: ignoring -mc-relax-all because filetype != obj\n";
   }
 
+  //将ta.h头文件加入ta.c前面
+  std::string OutTA_hFilename = GetFileNameRoot(InputFilename);
+  OutTA_hFilename += ".h";
+  std::string text = "#include <";
+  text += OutTA_hFilename;
+  text += ">\n";
+  Out->os() << text;
+  MOut->os() << text;
   // Ask the target to add backend passes as necessary.
-  if (Target.addPassesToEmitFile(PM, Out->os(), nullptr, codegen::getFileType(),
+  // bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
+  //                                        raw_pwrite_stream &ta, //TA文件
+  //                                        raw_pwrite_stream &main, //main文件
+  //                                        raw_pwrite_stream &ta_h, //ta.h文件
+  //                                        raw_pwrite_stream *DwoOut,
+  //                                        CodeGenFileType FileType,
+  //                                        bool DisableVerify,
+  //                                        MachineModuleInfoWrapperPass *MMI)
+  // if (Target.addPassesToEmitFile(PM, Out->os(), MOut->os(), TA_hOut->os(), nullptr, codegen::getFileType(),
+  //                                NoVerify)) {
+  // std::cout << "jjjjjjjjjjjjjj"<<std::endl;
+  // std::cout << "NoVerify" << NoVerify<<std::endl;
+  if (Target.addPassesToEmitFile(PM, Out->os(), &(TA_hOut->os()), codegen::getFileType(),
+                                 NoVerify)) {
+    errs() << argv[0] << ": target does not support generation of this"
+           << " file type!\n";
+    return 1;
+  }
+  //main.c文件
+  if (Target.addPassesToEmitFile(PM, MOut->os(), nullptr, codegen::getFileType(),
                                  NoVerify)) {
     errs() << argv[0] << ": target does not support generation of this"
            << " file type!\n";
@@ -349,7 +466,10 @@ static int compileModule(char **argv, LLVMContext &Context) {
   PM.run(*mod);
 
   // Declare success.
+  //ta.c，ta.h,main.c保存
   Out->keep();
+  TA_hOut->keep();
+  MOut->keep();
 
   return 0;
 }

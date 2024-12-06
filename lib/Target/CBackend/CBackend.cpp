@@ -30,6 +30,16 @@
 #include <cmath>
 #include <cstdio>
 #include <iostream>
+#include <fstream>
+#include <unistd.h>
+#include <fcntl.h>
+#include <iomanip>
+#include <random>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <regex>
+#include <string>
 
 // Some ms header decided to define setjmp as _setjmp, undo this for this file
 // since we don't need it
@@ -51,6 +61,61 @@
 namespace llvm_cbe {
 
 using namespace llvm;
+
+//测试全局变量
+std::unordered_set<Function*> FunNameSet;
+std::unordered_map<Function*, std::vector<int>> FunParamMap;
+std::vector<Function*> FunTEEVec;
+std::vector<std::string> ParamNum;
+bool ParamIndex = false;
+
+void InitTEEFunset(Module &M){
+  std::regex memsizeRegex(R"(memsize\(([^)]+)\))");
+  std::smatch match;
+  auto global_annos = M.getNamedGlobal("llvm.global.annotations");
+  if (global_annos) {
+    //fds
+    // std::cout<<"11111111111"<<std::endl;
+    auto a = cast<ConstantArray>(global_annos->getOperand(0));
+    //ds
+    // std::cout<<"i="<<a->getNumOperands()<<std::endl;
+    for (int i=0; i<a->getNumOperands(); i++) {
+      auto e = cast<ConstantStruct>(a->getOperand(i));
+      // std::cout<<"eeeeeeeeeeeee"<<std::endl;
+      if (auto fn = dyn_cast<Function>(e->getOperand(0))) {
+        // std::cout<<"ffffffffffffffff"<<std::endl;
+        // std::cout<<"ffffffffffffffff:"<<(fn->getName()).str()<<std::endl;
+        auto anno = cast<ConstantDataArray>(cast<GlobalVariable>(e->getOperand(1))->getOperand(0))->getAsCString();
+        // std::cout<<"anno:"<<anno.str()<<std::endl;
+
+        if (anno == "TZ") { FunNameSet.insert(fn); }
+        if (anno == "TAFUN") { FunTEEVec.push_back(fn); }
+        std::string tmp = anno.str();
+        if (regex_search(tmp, match, memsizeRegex)){
+          std::string args = match[1];
+          // 分割括号内的内容，提取每个整数
+          std::regex numberRegex(R"(\d+)");
+          std::sregex_iterator it(args.begin(), args.end(), numberRegex);
+          std::sregex_iterator end;
+          
+          while (it != end) {
+              FunParamMap[fn].push_back(stoi(it->str()));
+              ++it;
+          }
+        }
+      }
+    }
+  }
+}
+
+void ClearTEEFun(){
+  FunNameSet.clear();    // 清空 FunNameSet
+  FunParamMap.clear();   // 清空 FunParamMap
+  FunTEEVec.clear();     // 清空 FunTEEVec
+
+}
+
+
 
 static cl::opt<bool> DeclareLocalsLate(
     "cbe-declare-locals-late",
@@ -1713,6 +1778,7 @@ std::string CWriter::GetValueName(const Value *Operand) {
 /// writeInstComputationInline - Emit the computation for the specified
 /// instruction inline, with no destination provided.
 void CWriter::writeInstComputationInline(Instruction &I) {
+  // Out << "ppppp||";
   // C can't handle non-power-of-two integer types
   unsigned mask = 0;
   Type *Ty = I.getType();
@@ -1721,16 +1787,17 @@ void CWriter::writeInstComputationInline(Instruction &I) {
     if (!isPowerOf2_32(ITy->getBitWidth()))
       mask = ITy->getBitMask();
   }
-
+  // Out << "iiiii||";
   // If this is a non-trivial bool computation, make sure to truncate down to
   // a 1 bit value.  This is important because we want "add i1 x, y" to return
   // "0" when x and y are true, not "2" for example.
   // Also truncate odd bit sizes
   if (mask)
     Out << "((";
-
+// Out << "yyyyyyyyyyyyyyyyyyyyy\n";
+// Out << "jjjj||";
   visit(&I);
-
+// Out << "wwwww||";
   if (mask)
     Out << ")&" << mask << ")";
 }
@@ -1750,8 +1817,14 @@ void CWriter::writeOperandInternal(Value *Operand,
 
   if (CPV && !isa<GlobalValue>(CPV))
     printConstant(CPV, Context);
-  else
-    Out << GetValueName(Operand);
+  else{
+    // std::cout << GetValueName(Operand)<<std::endl;
+    //调用函数参数
+    std::string pnum = GetValueName(Operand);
+    Out << pnum;
+    if(ParamIndex){
+      ParamNum.push_back(pnum);
+    }}
 }
 
 void CWriter::writeOperand(Value *Operand, enum OperandContext Context) {
@@ -2389,18 +2462,165 @@ bool CWriter::doInitialization(Module &M) {
   MRI = new MCRegisterInfo();
   TCtx = new MCContext(llvm::Triple(TheModule->getTargetTriple()), TAsm, MRI,
                        nullptr);
+  
+  //初始化三个全局变量
+  if(MainIndex == true){
+  InitTEEFunset(M);
+  }
   return false;
 }
+//生成ta.h文件的头部
+bool GetTA_hFirst(raw_ostream &TA_H){
+  std::string tmpstr = "#ifndef TA_H_H\n#define TA_H_H\n";
+  TA_H << tmpstr;
+  TA_H << "\n";
+  return true;
+}
+//生成随机uuid
+std::string generateRandomUUID() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dist32(0, 0xFFFFFFFF);
+    std::uniform_int_distribution<uint16_t> dist16(0, 0xFFFF);
+    std::uniform_int_distribution<uint8_t> dist8(0, 0xFF);
 
+    std::ostringstream oss;
+
+    oss << "{ 0x" << std::hex << dist32(gen) << ", 0x" << std::hex << dist16(gen) << ", 0x" << std::hex << dist16(gen) << ", \\";
+    oss << "\n";
+    oss << "		{ ";
+    for (int i = 0; i < 8; ++i) {
+        oss << "0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(dist8(gen));
+        if (i != 7) {
+            oss << ", ";
+        }
+    }
+    oss << "} }";
+
+    return oss.str();
+}
+//生成ta.h文件的尾部和uuid
+bool GetTA_hEnd(raw_ostream &TA_H){
+  std::string tmpstr = "#define TA_H_UUID \\";
+  TA_H << tmpstr;
+  TA_H << "\n";
+
+  TA_H << "	";
+  tmpstr = generateRandomUUID();
+  TA_H << tmpstr;
+  TA_H << "\n";
+  TA_H << "\n";
+
+  TA_H << "#endif";
+  return true;
+}
+
+
+bool GetTAfirst(raw_ostream &TA){
+  TA << "#include <tee_internal_api.h>\n#include <tee_internal_api_extensions.h>\n";
+  TA << "\n";
+  TA << "TEE_Result TA_CreateEntryPoint(void)\n{\n  return TEE_SUCCESS;\n}\nvoid TA_DestroyEntryPoint(void)\n{\n}\nTEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,\n    TEE_Param __maybe_unused params[4],\n   void __maybe_unused **sess_ctx)\n{\n  /* Unused parameters */\n  (void)&params;\n  (void)&sess_ctx;\n  /* If return value != TEE_SUCCESS the session will not be created. */\n return TEE_SUCCESS;\n}\nvoid TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)\n{\n  (void)&sess_ctx; /* Unused parameter */\n}";
+  TA << "\n";
+  return true;
+}
+
+bool GetTAend(raw_ostream &TA){
+  TA << "TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,\n";
+  TA << "			uint32_t cmd_id,\n";
+  TA << "			uint32_t param_types, TEE_Param params[4])\n";
+  TA << "{\n";
+  TA << "	(void)&sess_ctx; /* Unused parameter */\n";
+  TA << "\n";
+  TA << "	switch (cmd_id) {\n";
+  for(int i = 0; i < FunTEEVec.size(); i++){
+    TA << "	case " << i<<":\n";
+    TA << "		return " << (FunTEEVec[i]->getName()).str()<<"(";
+    int l = FunParamMap[FunTEEVec[i]].size();
+    for(int j = 0; j < l; j++){
+      if(j != 0) TA << ", ";
+      TA << "params[" << j << "].memref.buffer";
+    }
+  }
+  TA << ");\n";
+  TA << "	default:\n";
+  TA << "		return TEE_ERROR_BAD_PARAMETERS;\n";
+  TA << "	}\n";
+  TA << "}";
+  return true;
+}
+
+void GetMainfirst(raw_ostream &Main){
+  Main << "#include <tee_client_api.h>\n";
+}
+// std::unordered_set<std::string> FunNameSet;
+// std::unordered_map<std::string,std::vector<int>> FunParamMap;
+// std::vector<std::string> FunTEEVec;
+void p(){
+  std::cout << "set----------"<<std::endl;
+  for (Function* fn : FunNameSet) {
+    // 遍历 FunNameSet 中的每一个 Function* 指针
+    std::cout << "Function: " << fn->getName().str() << std::endl;
+  }
+  std::cout << "map----------"<<std::endl;
+  for (auto &pair : FunParamMap) {
+    Function* fn = pair.first;
+    std::vector<int> &params = pair.second;
+
+    std::cout << "Function: " << fn->getName().str() << " Parameters: ";
+    for (int param : params) {
+        std::cout << param << " ";
+    }
+    std::cout << std::endl;
+  }
+  std::cout << "vec----------"<<std::endl;
+  std::cout << FunTEEVec.size()<<std::endl;
+  for (Function* fn : FunTEEVec) {
+    std::cout << "Function: " << fn->getName().str() << std::endl;
+  }
+}
 bool CWriter::doFinalization(Module &M) {
   // Output all code to the file
-  std::string methods = Out.str();
-  _Out.clear();
-  generateHeader(M);
-  std::string header = OutHeaders.str() + Out.str();
-  _Out.clear();
-  _OutHeaders.clear();
-  FileOut << header << methods;
+  if(MainIndex == true){
+    std::cout << "main------"<<std::endl;
+    p();
+    std::string methods = Out.str();
+
+    GetMainfirst(FileOut);
+    FileOut << methods;
+    // ClearTEEFun();
+  } else {
+    std::cout << "tac------"<<std::endl;
+    p();
+    std::string methods = Out.str();
+    _Out.clear();
+    generateHeader(M);
+    std::string header = OutHeaders.str() + Out.str();
+    _Out.clear();
+    _OutHeaders.clear();
+    //输出看看header和methods都是啥玩意
+    // std::cout << "-------------"<<std::endl;
+    // std::cout << "header:" <<std::endl;
+    // std::cout << header <<std::endl;
+    // std::cout << "-------------"<<std::endl;
+    // std::cout << "methods:" << std::endl;
+    // std::cout << methods << std::endl;
+    // std::cout << "-------------"<<std::endl;
+    //TA.c
+    GetTAfirst(FileOut);
+    FileOut << methods;
+    GetTAend(FileOut);
+    //ta.h
+    GetTA_hFirst(TA_HOut);
+    TA_HOut << header;
+    GetTA_hEnd(TA_HOut);
+    // MainOut << methods;
+    // ClearTEEFun();
+  }
+
+  
+  
+
+  
 
   // Free memory...
 
@@ -2469,8 +2689,10 @@ void CWriter::generateHeader(Module &M) {
   if (headerIncMath())
     OutHeaders << "#include <math.h>\n";
   // Provide a definition for `bool' if not compiling with a C++ compiler.
-  OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
-  OutHeaders << "\n";
+
+  //ta.h删除部分字符串
+  // OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
+  // OutHeaders << "\n";
 
   Out << "\n\n/* Global Declarations */\n";
 
@@ -3713,6 +3935,13 @@ bool CWriter::canDeclareLocalLate(Instruction &I) {
 }
 
 void CWriter::printFunction(Function &F) {
+  std::string Name = GetValueName(&F);
+  if(Name == "main" && MainIndex == false){
+    return;
+  }
+  if(MainIndex == true && Name != "main"){
+    return;
+  }
   /// isStructReturn - Should this function actually return a struct by-value?
   bool isStructReturn = F.hasStructRetAttr();
 
@@ -3724,7 +3953,7 @@ void CWriter::printFunction(Function &F) {
   if (F.hasLocalLinkage())
     Out << "static ";
 
-  std::string Name = GetValueName(&F);
+  
 
   FunctionType *FTy = F.getFunctionType();
 
@@ -3743,6 +3972,24 @@ void CWriter::printFunction(Function &F) {
   printFunctionProto(Out, &F, Name);
 
   Out << " {\n";
+
+  //main.c的变量定义
+  if(Name == "main") {
+    Out << "\n";
+    Out << "  TEEC_Result res;\n";
+    Out << "  TEEC_Context ctx;\n";
+    Out << "  TEEC_Session sess;\n";
+    Out << "  TEEC_Operation op;\n";
+    Out << "  TEEC_UUID uuid = TA_H_UUID;\n";
+    Out << "  uint32_t err_origin;\n";
+    Out << "  res = TEEC_InitializeContext(NULL, &ctx);\n";
+    Out << "  res = TEEC_OpenSession(&ctx, &sess, &uuid,\n";
+    Out << "            TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);\n";
+    Out << "  memset(&op, 0, sizeof(op));\n";
+    Out << "\n";
+  }
+
+  // Out << "-----------\n";
 
   if (shouldFixMain) {
     // Cast the arguments to main() to the expected LLVM IR types and names.
@@ -3764,6 +4011,8 @@ void CWriter::printFunction(Function &F) {
     }
   }
 
+// Out << "-----------\n";
+
   // If this is a struct return function, handle the result with magic.
   if (isStructReturn) {
     Type *StructTy = F.getParamStructRetType(0);
@@ -3776,6 +4025,7 @@ void CWriter::printFunction(Function &F) {
         << "* " << GetValueName(F.arg_begin()) << " = &StructReturn;\n";
   }
 
+// Out << "-----------\n";
   bool PrintedVar = false;
 
   // print local variable information for the function
@@ -3786,11 +4036,20 @@ void CWriter::printFunction(Function &F) {
           Alignment &&
           Alignment > TD->getABITypeAlign(AI->getAllocatedType()).value();
       Out << "  ";
+
+      //变量定义
+      // Out << "yyyyyyyyyyyyyyyy";
+
       if (IsOveraligned) {
         headerUseAligns();
         Out << "__PREFIXALIGN__(" << Alignment << ") ";
       }
       printTypeNameForAddressableValue(Out, AI->getAllocatedType(), false);
+      // std::cout << GetValueName(AI)<<std::endl;
+      //变量定义
+      // Out << "yyyyyyyyyyyyyyyy";
+
+
       Out << ' ' << GetValueName(AI);
       if (IsOveraligned) {
         headerUseAligns();
@@ -3801,7 +4060,14 @@ void CWriter::printFunction(Function &F) {
     } else if (!isEmptyType(I->getType()) && !isInlinableInst(*I)) {
       if (!canDeclareLocalLate(*I)) {
         Out << "  ";
+
+        //变量定义
+        // Out << "xxxxxxxxxxxx";
+
         printTypeName(Out, I->getType(), false) << ' ' << GetValueName(&*I);
+
+        // Out << "xxxxxxxxxxxx";
+
         Out << ";\n";
       }
 
@@ -3813,6 +4079,8 @@ void CWriter::printFunction(Function &F) {
       }
       PrintedVar = true;
     }
+
+    // Out << "kkkkkkkkkkkkk";
     // We need a temporary for the BitCast to use so it can pluck a value out
     // of a union to do the BitCast. This is separate from the need for a
     // variable to hold the result of the BitCast.
@@ -3824,18 +4092,24 @@ void CWriter::printFunction(Function &F) {
     }
   }
 
+  // Out << "-----------111111\n";
+
   if (PrintedVar)
     Out << '\n';
 
-  // print the basic blocks
+// Out << "-----------\n";
+  // print the basic blocks ta函数的调用在这一部分
   for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
     if (Loop *L = LI->getLoopFor(&*BB)) {
+      // Out << "kkkkkkkkkk";
       if (L->getHeader() == &*BB && L->getParentLoop() == nullptr)
         printLoop(L);
     } else {
+      // Out << "kkkkkkkkkk";
       printBasicBlock(&*BB);
     }
   }
+  // Out << "-----------\n";
 
   Out << "}\n\n";
 }
@@ -3868,6 +4142,7 @@ void CWriter::printBasicBlock(BasicBlock *BB) {
     }
 
   if (NeedsLabel) {
+    // std::cout << "bb:"<<GetValueName(BB)<<std::endl;
     Out << GetValueName(BB) << ":";
     // A label immediately before a late variable declaration is problematic,
     // because "a label can only be part of a statement and a declaration is not
@@ -3880,9 +4155,11 @@ void CWriter::printBasicBlock(BasicBlock *BB) {
 
   // Output all of the instructions in the basic block...
   for (BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
+    // Out << "1111111111111111\n";
     DILocation *Loc = (*II).getDebugLoc();
     if (Loc != nullptr && Loc->getLine() != 0 &&
         LastAnnotatedSourceLine != Loc->getLine()) {
+          // Out << "1111111111111111\n";
       std::string Directory = Loc->getDirectory().str();
       std::replace(Directory.begin(), Directory.end(), '\\', '/');
       std::string Filename = Loc->getFilename().str();
@@ -3891,20 +4168,25 @@ void CWriter::printBasicBlock(BasicBlock *BB) {
       if (!Directory.empty() && Directory[Directory.size() - 1] != '/' &&
           !Filename.empty() && Filename[0] != '/')
         Directory.push_back('/');
-
+      // std::cout << Loc->getLine()<<std::endl;
       Out << "#line " << Loc->getLine() << " \"" << Directory << Filename
           << "\""
           << "\n";
       LastAnnotatedSourceLine = Loc->getLine();
     }
     if (!isInlinableInst(*II) && !isDirectAlloca(&*II)) {
+      // Out << "2222222222\n";
       Out << "  ";
       if (!isEmptyType(II->getType()) && !isInlineAsm(*II)) {
+        // Out << "oooo";
         if (canDeclareLocalLate(*II)) {
           printTypeName(Out, II->getType(), false) << ' ';
         }
+        // std::cout <<  GetValueName(&*II)<<std::endl;
         Out << GetValueName(&*II) << " = ";
+        // Out << "2222222222222\n";
       }
+      // Out << "ppppp";
       writeInstComputationInline(*II);
       Out << ";\n";
     }
@@ -4867,8 +5149,19 @@ bool CWriter::lowerIntrinsics(Function &F) {
   return LoweredAny;
 }
 
+//处理调用函数
 void CWriter::visitCallInst(CallInst &I) {
+  // Out << "yxkyxkxyi||";
   CurInstr = &I;
+  std::string fname;
+  Value *Tmp = I.getCalledOperand();
+  fname = GetValueName(Tmp);
+  for(int i = 0; i < FunTEEVec.size(); i++){
+    if(fname == (FunTEEVec[i]->getName()).str()){
+      ParamIndex = true;
+      Out << "//";
+    }
+  }
 
   if (isa<InlineAsm>(I.getCalledOperand()))
     return visitInlineAsm(I);
@@ -4922,11 +5215,14 @@ void CWriter::visitCallInst(CallInst &I) {
     writeOperand(Callee, ContextCasted);
     Out << ')';
   } else {
+    //调用函数的函数名
     cwriter_assert(isa<Function>(Callee));
+    // fname = GetValueName(Callee).str();
     Out << GetValueName(Callee);
+    // std::cout << GetValueName(Callee) <<std::endl;
   }
 
-  Out << '(';
+  Out << "(";
 
   bool PrintedArg = false;
   FunctionType *FTy = I.getFunctionType();
@@ -4935,7 +5231,9 @@ void CWriter::visitCallInst(CallInst &I) {
     PrintedArg = true;
   }
 
+  //调用函数的参数数量
   unsigned NumDeclaredParams = FTy->getNumParams();
+  // std::cout << NumDeclaredParams<<std::endl;
   auto CS(&I);
   auto AI = CS->arg_begin(), AE = CS->arg_end();
   unsigned ArgNo = 0;
@@ -4968,13 +5266,58 @@ void CWriter::visitCallInst(CallInst &I) {
       Out << ')';
     }
     // Check if the argument is expected to be passed by value.
-    if (I.getAttributes().hasAttributeAtIndex(ArgNo + 1, Attribute::ByVal))
-      writeOperandDeref(*AI);
-    else
-      writeOperand(*AI, ContextCasted);
+    if (I.getAttributes().hasAttributeAtIndex(ArgNo + 1, Attribute::ByVal)){
+      // Out << "hhhhhh";
+      writeOperandDeref(*AI);}
+    else{
+      // Out << "hhhhhh";
+      //调用函数的参数
+      writeOperand(*AI, ContextCasted);}
     PrintedArg = true;
   }
   Out << ')';
+
+
+  // std::unordered_set<Function*> FunNameSet;
+  // std::unordered_map<Function*, std::vector<int>> FunParamMap;
+  // std::vector<Function*> FunTEEVec;
+  
+  for(int i = 0; i < FunTEEVec.size(); i++){
+    
+    if(fname == (FunTEEVec[i]->getName()).str()){
+      Out << "\n";
+      Out << "  op.paramTypes = TEEC_PARAM_TYPES(";
+      for(int j = 0; j < NumDeclaredParams; j++){
+        if(j != 0) Out << ", ";
+        Out << "TEEC_MEMREF_TEMP_INOUT";
+      }
+      for(int j = 0; j < 4 - NumDeclaredParams; j++){
+        Out << ", TEEC_NONE";
+      }
+      Out << ");\n";
+
+      for(int j = 0; j < NumDeclaredParams; j++){
+        Out << "  op.params[" << j << "].tmpref.buffer = &";
+        Out << ParamNum[j]<<";\n";
+        Out << "  op.params[" << j << "].tmpref.size = ";
+        int n = 0;
+
+        for (auto &pair : FunParamMap) {
+        Function* fn = pair.first;
+        std::vector<int> params = pair.second;
+        if (fname == (fn->getName()).str()) {
+            n = params[j];
+        }
+        }
+
+        Out << n << ";\n";
+      }
+
+      Out << "  TEEC_InvokeCommand(&sess, "<<i<<", &op, &err_origin)";
+    }
+  }
+  ParamIndex = false;
+  ParamNum.clear();
 }
 
 /// visitBuiltinCall - Handle the call to the specified builtin.  Returns true

@@ -58,7 +58,16 @@ class CWriter : public FunctionPass, public InstVisitor<CWriter> {
   std::string _OutHeaders;
   raw_string_ostream OutHeaders;
   raw_string_ostream Out;
+  //ta.c文件
   raw_ostream &FileOut;
+  //main.c文件
+  // raw_ostream &MainOut;
+  //ta.h文件
+  raw_ostream &TA_HOut;
+  //是否main.c
+  bool MainIndex = false;
+
+
   IntrinsicLowering *IL = nullptr;
   LoopInfo *LI = nullptr;
   const Module *TheModule = nullptr;
@@ -171,8 +180,12 @@ class CWriter : public FunctionPass, public InstVisitor<CWriter> {
 
 public:
   static char ID;
-  explicit CWriter(raw_ostream &o)
-      : FunctionPass(ID), OutHeaders(_OutHeaders), Out(_Out), FileOut(o) {
+  // explicit CWriter(raw_ostream &ta, raw_ostream &main, raw_ostream &ta_h)
+  //     : FunctionPass(ID), OutHeaders(_OutHeaders), Out(_Out), FileOut(ta), MainOut(main), TA_HOut(ta_h) {
+  //   memset(&UsedHeaders, 0, sizeof(UsedHeaders));
+  // }
+  explicit CWriter(raw_ostream &ta, raw_ostream &ta_h, bool index)
+      : FunctionPass(ID), OutHeaders(_OutHeaders), Out(_Out), FileOut(ta), TA_HOut(ta_h), MainIndex(index) {
     memset(&UsedHeaders, 0, sizeof(UsedHeaders));
   }
 
