@@ -3936,10 +3936,10 @@ bool CWriter::canDeclareLocalLate(Instruction &I) {
 
 void CWriter::printFunction(Function &F) {
   std::string Name = GetValueName(&F);
-  if(Name == "main" && MainIndex == false){
+  if(MainIndex == false && FunNameSet.find(&F) == FunNameSet.end()){
     return;
   }
-  if(MainIndex == true && Name != "main"){
+  if(MainIndex == true && FunNameSet.find(&F) != FunNameSet.end()){
     return;
   }
   /// isStructReturn - Should this function actually return a struct by-value?

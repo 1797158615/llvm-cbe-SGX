@@ -48,6 +48,10 @@
 #include <llvm/Config/llvm-config.h>
 #include <memory>
 #include <fstream>
+#include <sys/stat.h>
+#include <vector>
+#include <sys/types.h>
+#include <errno.h>
 using namespace llvm;
 
 static codegen::RegisterCodeGenFlags CGF;
@@ -102,6 +106,35 @@ static inline std::string GetFileNameRoot(const std::string &InputFilename) {
   return outputFilename;
 }
 
+//文件夹创建
+// 创建单个目录
+bool createFolder(const std::string& folderPath) {
+    if (mkdir(folderPath.c_str(), 0755) == 0 || errno == EEXIST) {
+        return true;
+    } else {
+        std::cerr << "Failed to create folder: " << folderPath << " (Error: " << strerror(errno) << ")" << std::endl;
+        return false;
+    }
+}
+
+// 创建多级目录并判断是否成功
+bool createDirectoryStructure(const std::string& root, const std::vector<std::string>& subDirs) {
+    // 创建根目录
+    if (!createFolder(root)) {
+        return false;
+    }
+
+    // 创建子目录
+    for (const auto& subDir : subDirs) {
+        std::string fullPath = root + "/" + subDir;
+        if (!createFolder(fullPath)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
 //ta.c文件
 static ToolOutputFile *GetOutputStream(const char *TargetName,
                                        Triple::OSType OS,
@@ -118,7 +151,7 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
       case CodeGenFileType::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0){
-            OutputFilename += "cbe.c";
+            OutputFilename += "_ta.c";
             //c代码输出的文件名字
             std::cout << OutputFilename <<std::endl;
           }
@@ -166,8 +199,13 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
   // OutputFilename = "/home/yxk/t.cbe.c";
   // std::cout << Binary <<std::endl;
 
+  std::string path = "./";
+  path += GetFileNameRoot(InputFilename);
+  path += "/ta/";
+  path += OutputFilename;
+
   ToolOutputFile *FDOut =
-      new ToolOutputFile(OutputFilename.c_str(), error, OpenFlags);
+      new ToolOutputFile(path.c_str(), error, OpenFlags);
   if (error) {
     errs() << error.message() << '\n';
     delete FDOut;
@@ -189,8 +227,10 @@ static ToolOutputFile *GetMainStream(){
   //   Binary = true;
   //   break;
   // }
-
-  std::string OutMainFilename = "main.c";
+  std::string OutMainFilename = "./";
+  OutMainFilename += GetFileNameRoot(InputFilename);
+  OutMainFilename += "/host/";
+  OutMainFilename += "main.c";
   // Open the file.
   std::error_code error;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
@@ -221,7 +261,10 @@ static ToolOutputFile *GetTA_hStream(){
     break;
   }
 
-  std::string OutTA_hFilename = GetFileNameRoot(InputFilename);
+  std::string OutTA_hFilename = "./";
+  OutTA_hFilename += GetFileNameRoot(InputFilename);
+  OutTA_hFilename += "/ta/include/";
+  OutTA_hFilename += GetFileNameRoot(InputFilename);
   OutTA_hFilename += ".h";
   // Open the file.
   std::error_code error;
@@ -247,6 +290,10 @@ static LLVMContext TheContext;
 // main - Entry point for the llc compiler.
 //
 int main(int argc, char **argv) {
+  
+
+
+  //开始执行main函数
   sys::PrintStackTraceOnErrorSignal(argv[0]);
   PrettyStackTraceProgram X(argc, argv);
 
@@ -394,6 +441,24 @@ static int compileModule(char **argv, LLVMContext &Context) {
   Target.setMCUseLoc(false);  */
 
   // Jackson Korba 9/30/14
+
+  //生成文件夹
+  // 根目录
+  std::string rootDir = GetFileNameRoot(InputFilename);
+  // 子目录结构
+    std::vector<std::string> subDirs = {
+        "host",
+        "ta",
+        "ta/include"
+    };
+  // 创建目录结构并检查是否成功
+  if (createDirectoryStructure(rootDir, subDirs)) {
+      std::cout << "Directory structure created successfully!" << std::endl;
+  } else {
+      std::cerr << "Failed to create the directory structure." << std::endl;
+  }
+
+
   //ta.c文件
   std::unique_ptr<ToolOutputFile> Out(
       GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
@@ -470,6 +535,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
   Out->keep();
   TA_hOut->keep();
   MOut->keep();
+
+
 
   return 0;
 }
