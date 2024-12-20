@@ -68,6 +68,7 @@ std::unordered_map<Function*, std::vector<int>> FunParamMap;
 std::vector<Function*> FunTEEVec;
 std::vector<std::string> ParamNum;
 bool ParamIndex = false;
+bool isMainfinal = false; //判断是否要输出通道关闭
 
 void InitTEEFunset(Module &M){
   std::regex memsizeRegex(R"(memsize\(([^)]+)\))");
@@ -3975,6 +3976,7 @@ void CWriter::printFunction(Function &F) {
 
   //main.c的变量定义
   if(Name == "main") {
+    isMainfinal = true;
     Out << "\n";
     Out << "  TEEC_Result res;\n";
     Out << "  TEEC_Context ctx;\n";
@@ -3985,7 +3987,6 @@ void CWriter::printFunction(Function &F) {
     Out << "  res = TEEC_InitializeContext(NULL, &ctx);\n";
     Out << "  res = TEEC_OpenSession(&ctx, &sess, &uuid,\n";
     Out << "            TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);\n";
-    Out << "  memset(&op, 0, sizeof(op));\n";
     Out << "\n";
   }
 
@@ -4062,11 +4063,11 @@ void CWriter::printFunction(Function &F) {
         Out << "  ";
 
         //变量定义
-        // Out << "xxxxxxxxxxxx";
+        Out << "xxxxxxxxxxxx";
 
         printTypeName(Out, I->getType(), false) << ' ' << GetValueName(&*I);
 
-        // Out << "xxxxxxxxxxxx";
+        Out << "xxxxxxxxxxxx";
 
         Out << ";\n";
       }
@@ -4199,6 +4200,12 @@ void CWriter::printBasicBlock(BasicBlock *BB) {
 // Specific Instruction type classes... note that all of the casts are
 // necessary because we use the instruction classes as opaque types...
 void CWriter::visitReturnInst(ReturnInst &I) {
+  if(isMainfinal) {
+    Out << "\n";
+    Out << "  TEEC_CloseSession(&sess);\n";
+    Out << "  TEEC_FinalizeContext(&ctx);\n";
+    isMainfinal = false;
+  }
   CurInstr = &I;
 
   // If this is a struct return function, return the temporary struct.
@@ -5218,7 +5225,12 @@ void CWriter::visitCallInst(CallInst &I) {
     //调用函数的函数名
     cwriter_assert(isa<Function>(Callee));
     // fname = GetValueName(Callee).str();
-    Out << GetValueName(Callee);
+    if(fname == "tee_wait") {
+      Out << "TEE_Wait";
+    } else {
+        Out << GetValueName(Callee);
+    }
+    
     // std::cout << GetValueName(Callee) <<std::endl;
   }
 
@@ -5286,6 +5298,7 @@ void CWriter::visitCallInst(CallInst &I) {
     
     if(fname == (FunTEEVec[i]->getName()).str()){
       Out << "\n";
+      Out << "  memset(&op, 0, sizeof(op));\n";
       Out << "  op.paramTypes = TEEC_PARAM_TYPES(";
       for(int j = 0; j < NumDeclaredParams; j++){
         if(j != 0) Out << ", ";

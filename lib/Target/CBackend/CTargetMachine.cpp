@@ -29,7 +29,7 @@ bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                          MachineModuleInfoWrapperPass *MMI) {
 
   // std::cout << "yyyyyyyyyyyyyy"<<std::endl;
-
+std::cout << "DisableVerify:" << DisableVerify<<std::endl;
 
   if (FileType != CodeGenFileType::CGFT_AssemblyFile)
     return true;
