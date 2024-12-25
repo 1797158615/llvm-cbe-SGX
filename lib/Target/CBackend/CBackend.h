@@ -246,19 +246,32 @@ private:
   };
 
   void writeOperandDeref(Value *Operand);
+  void yxk_writeOperandDeref(raw_ostream &Out, Value *Operand);
   void writeOperand(Value *Operand,
                     enum OperandContext Context = ContextNormal);
+  void yxk_writeOperand(raw_ostream &Out, Value *Operand,
+                    enum OperandContext Context = ContextNormal);
   void writeInstComputationInline(Instruction &I);
+  void yxk_writeInstComputationInline(raw_ostream &Out, Instruction &I);
   void writeOperandInternal(Value *Operand,
                             enum OperandContext Context = ContextNormal);
+  void yxk_writeOperandInternal(raw_ostream &Out, Value *Operand,
+                            enum OperandContext Context = ContextNormal);
   void writeOperandWithCast(Value *Operand, unsigned Opcode);
+  void yxk_writeOperandWithCast(raw_ostream &Out, Value *Operand, unsigned Opcode);
   void writeVectorOperandWithCast(Value *Operand, unsigned Index,
+                                  unsigned Opcode);
+  void yxk_writeVectorOperandWithCast(raw_ostream &Out, Value *Operand, unsigned Index,
                                   unsigned Opcode);
   void opcodeNeedsCast(unsigned Opcode, bool &shouldCast, bool &castIsSigned);
 
   void writeOperandWithCast(Value *Operand, ICmpInst &I);
+  void yxk_writeOperandWithCast(raw_ostream &Out, Value *Operand, ICmpInst &I);
   bool writeInstructionCast(Instruction &I);
+  bool yxk_writeInstructionCast(raw_ostream &Out, Instruction &I);
   void writeMemoryAccess(Value *Operand, Type *OperandType, bool IsVolatile,
+                         unsigned Alignment);
+  void yxk_writeMemoryAccess(raw_ostream &Out, Value *Operand, Type *OperandType, bool IsVolatile,
                          unsigned Alignment);
 
   std::string InterpretASMConstraint(InlineAsm::ConstraintInfo &c);
@@ -277,18 +290,30 @@ private:
   void printFloatingPointConstants(const Constant *C);
 
   void printFunction(Function &);
+  void yxk_printFunction(raw_ostream &Out, Function &);
   void printBasicBlock(BasicBlock *BB);
+  void yxk_printBasicBlock(raw_ostream &Out, BasicBlock *BB);
   void printLoop(Loop *L);
+  void yxk_printLoop(raw_ostream &Out, Loop *L);
 
   void printCast(unsigned opcode, Type *SrcTy, Type *DstTy);
+  void yxk_printCast(raw_ostream &Out, unsigned opcode, Type *SrcTy, Type *DstTy);
   void printConstant(Constant *CPV, enum OperandContext Context);
+  void yxk_printConstant(raw_ostream &Out, Constant *CPV, enum OperandContext Context);
   void printConstantWithCast(Constant *CPV, unsigned Opcode);
+  void yxk_printConstantWithCast(raw_ostream &Out, Constant *CPV, unsigned Opcode);
   bool printConstExprCast(ConstantExpr *CE);
+  bool yxk_printConstExprCast(raw_ostream &Out, ConstantExpr *CE);
   void printConstantArray(ConstantArray *CPA, enum OperandContext Context);
+  void yxk_printConstantArray(raw_ostream &Out, ConstantArray *CPA, enum OperandContext Context);
   void printConstantVector(ConstantVector *CV, enum OperandContext Context);
+  void yxk_printConstantVector(raw_ostream &Out, ConstantVector *CV, enum OperandContext Context);
   void printConstantDataSequential(ConstantDataSequential *CDS,
                                    enum OperandContext Context);
+  void yxk_printConstantDataSequential(raw_ostream &Out, ConstantDataSequential *CDS,
+                                   enum OperandContext Context);
   bool printConstantString(Constant *C, enum OperandContext Context);
+  bool yxk_printConstantString(raw_ostream &Out, Constant *C, enum OperandContext Context);
 
   bool isEmptyType(Type *Ty) const;
   Type *skipEmptyArrayTypes(Type *Ty) const;
@@ -301,9 +326,13 @@ private:
   friend class InstVisitor<CWriter>;
 
   void visitReturnInst(ReturnInst &I);
+  void yxk_visitReturnInst(raw_ostream &Out, ReturnInst &I);
   void visitBranchInst(BranchInst &I);
+  void yxk_visitBranchInst(raw_ostream &Out, BranchInst &I);
   void visitSwitchInst(SwitchInst &I);
+  void yxk_visitSwitchInst(raw_ostream &Out, SwitchInst &I);
   void visitIndirectBrInst(IndirectBrInst &I);
+  void yxk_visitIndirectBrInst(raw_ostream &Out, IndirectBrInst &I);
   void visitInvokeInst(InvokeInst &I) {
     llvm_unreachable("Lowerinvoke pass didn't work!");
   }
@@ -311,32 +340,54 @@ private:
     llvm_unreachable("DwarfEHPrepare pass didn't work!");
   }
   void visitUnreachableInst(UnreachableInst &I);
+  void yxk_visitUnreachableInst(raw_ostream &Out, UnreachableInst &I);
 
   void visitPHINode(PHINode &I);
+  void yxk_visitPHINode(raw_ostream &Out, PHINode &I);
   void visitUnaryOperator(UnaryOperator &I);
+  void yxk_visitUnaryOperator(raw_ostream &Out, UnaryOperator &I);
   void visitBinaryOperator(BinaryOperator &I);
+  void yxk_visitBinaryOperator(raw_ostream &Out, BinaryOperator &I);
   void visitICmpInst(ICmpInst &I);
+  void yxk_visitICmpInst(raw_ostream &Out, ICmpInst &I);
   void visitFCmpInst(FCmpInst &I);
+  void yxk_visitFCmpInst(raw_ostream &Out, FCmpInst &I);
 
   void visitCastInst(CastInst &I);
+  void yxk_visitCastInst(raw_ostream &Out, CastInst &I);
   void visitSelectInst(SelectInst &I);
+  void yxk_visitSelectInst(raw_ostream &Out, SelectInst &I);
   void visitCallInst(CallInst &I);
+  void yxk_visitCallInst(raw_ostream &Out, CallInst &I);
   void visitInlineAsm(CallInst &I);
+  void yxk_visitInlineAsm(raw_ostream &Out, CallInst &I);
   bool visitBuiltinCall(CallInst &I, Intrinsic::ID ID);
+  bool yxk_visitBuiltinCall(raw_ostream &Out, CallInst &I, Intrinsic::ID ID);
 
   void visitAllocaInst(AllocaInst &I);
+  void yxk_visitAllocaInst(raw_ostream &Out, AllocaInst &I);
   void visitLoadInst(LoadInst &I);
+  void yxk_visitLoadInst(raw_ostream &Out, LoadInst &I);
   void visitStoreInst(StoreInst &I);
+  void yxk_visitStoreInst(raw_ostream &Out, StoreInst &I);
   void visitFenceInst(FenceInst &I);
+  void yxk_visitFenceInst(raw_ostream &Out, FenceInst &I);
   void visitGetElementPtrInst(GetElementPtrInst &I);
+  void yxk_visitGetElementPtrInst(raw_ostream &Out, GetElementPtrInst &I);
   void visitVAArgInst(VAArgInst &I);
+  void yxk_visitVAArgInst(raw_ostream &Out, VAArgInst &I);
 
   void visitInsertElementInst(InsertElementInst &I);
+  void yxk_visitInsertElementInst(raw_ostream &Out, InsertElementInst &I);
   void visitExtractElementInst(ExtractElementInst &I);
+  void yxk_visitExtractElementInst(raw_ostream &Out, ExtractElementInst &I);
   void visitShuffleVectorInst(ShuffleVectorInst &SVI);
+  void yxk_visitShuffleVectorInst(raw_ostream &Out, ShuffleVectorInst &SVI);
 
   void visitInsertValueInst(InsertValueInst &I);
+  void yxk_visitInsertValueInst(raw_ostream &Out, InsertValueInst &I);
   void visitExtractValueInst(ExtractValueInst &I);
+  void yxk_visitExtractValueInst(raw_ostream &Out, ExtractValueInst &I);
 
   void visitInstruction(Instruction &I) {
     CurInstr = &I;
@@ -349,9 +400,15 @@ private:
   bool canDeclareLocalLate(Instruction &I);
   void printPHICopiesForSuccessor(BasicBlock *CurBlock, BasicBlock *Successor,
                                   unsigned Indent);
+  void yxk_printPHICopiesForSuccessor(raw_ostream &Out, BasicBlock *CurBlock, BasicBlock *Successor,
+                                  unsigned Indent);
   void printBranchToBlock(BasicBlock *CurBlock, BasicBlock *SuccBlock,
                           unsigned Indent);
+  void yxk_printBranchToBlock(raw_ostream &Out, BasicBlock *CurBlock, BasicBlock *SuccBlock,
+                          unsigned Indent);
   void printGEPExpression(Value *Ptr, unsigned NumOperands, gep_type_iterator I,
+                          gep_type_iterator E);
+  void yxk_printGEPExpression(raw_ostream &Out, Value *Ptr, unsigned NumOperands, gep_type_iterator I,
                           gep_type_iterator E);
 
   std::string GetValueName(const Value *Operand);

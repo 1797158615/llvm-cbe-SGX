@@ -50,9 +50,9 @@ std::cout << "DisableVerify:" << DisableVerify<<std::endl;
   PM.add(createExpandReductionsPass());
 
   //ta.c,main.c, ta.h文件输出
-  if(DwoOut == nullptr){
+  if(DisableVerify == 1){
     PM.add(new llvm_cbe::CWriter(Out, Out, true));
-  }else {
+  } else {
     PM.add(new llvm_cbe::CWriter(Out, *DwoOut, false));
   }
   

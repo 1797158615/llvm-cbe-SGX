@@ -69,6 +69,7 @@ std::vector<Function*> FunTEEVec;
 std::vector<std::string> ParamNum;
 bool ParamIndex = false;
 bool isMainfinal = false; //判断是否要输出通道关闭
+bool istacap = false;
 
 void InitTEEFunset(Module &M){
   std::regex memsizeRegex(R"(memsize\(([^)]+)\))");
@@ -980,7 +981,7 @@ raw_ostream &CWriter::printVectorDeclaration(raw_ostream &Out,
   return Out;
 }
 
-void CWriter::printConstantArray(ConstantArray *CPA,
+void CWriter::yxk_printConstantArray(raw_ostream &Out, ConstantArray *CPA,
                                  enum OperandContext Context) {
   printConstant(cast<Constant>(CPA->getOperand(0)), Context);
   for (unsigned i = 1, e = CPA->getNumOperands(); i != e; ++i) {
@@ -988,8 +989,16 @@ void CWriter::printConstantArray(ConstantArray *CPA,
     printConstant(cast<Constant>(CPA->getOperand(i)), Context);
   }
 }
+void CWriter::printConstantArray(ConstantArray *CPA,
+                                 enum OperandContext Context) {
+  if(istacap) {
+    yxk_printConstantArray(OutHeaders, CPA, Context);
+  } else {
+    yxk_printConstantArray(Out, CPA, Context);
+  }
+}
 
-void CWriter::printConstantVector(ConstantVector *CP,
+void CWriter::yxk_printConstantVector(raw_ostream &Out, ConstantVector *CP,
                                   enum OperandContext Context) {
   printConstant(cast<Constant>(CP->getOperand(0)), Context);
   for (unsigned i = 1, e = CP->getNumOperands(); i != e; ++i) {
@@ -997,8 +1006,16 @@ void CWriter::printConstantVector(ConstantVector *CP,
     printConstant(cast<Constant>(CP->getOperand(i)), Context);
   }
 }
+void CWriter::printConstantVector(ConstantVector *CP,
+                                  enum OperandContext Context) {
+  if(istacap) {
+    yxk_printConstantVector(OutHeaders, CP, Context);
+  } else {
+    yxk_printConstantVector(Out, CP, Context);
+  }
+}
 
-void CWriter::printConstantDataSequential(ConstantDataSequential *CDS,
+void CWriter::yxk_printConstantDataSequential(raw_ostream &Out, ConstantDataSequential *CDS,
                                           enum OperandContext Context) {
   printConstant(CDS->getElementAsConstant(0), Context);
   for (unsigned i = 1, e = CDS->getNumElements(); i != e; ++i) {
@@ -1006,8 +1023,16 @@ void CWriter::printConstantDataSequential(ConstantDataSequential *CDS,
     printConstant(CDS->getElementAsConstant(i), Context);
   }
 }
+void CWriter::printConstantDataSequential(ConstantDataSequential *CDS,
+                                          enum OperandContext Context) {
+  if(istacap) {
+    yxk_printConstantDataSequential(OutHeaders, CDS, Context);
+  } else {
+    yxk_printConstantDataSequential(Out, CDS, Context);
+  }
+}
 
-bool CWriter::printConstantString(Constant *C, enum OperandContext Context) {
+bool CWriter::yxk_printConstantString(raw_ostream &Out, Constant *C, enum OperandContext Context) {
   // As a special case, print the array as a string if it is an array of
   // ubytes or an array of sbytes with positive values.
   ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C);
@@ -1080,6 +1105,13 @@ bool CWriter::printConstantString(Constant *C, enum OperandContext Context) {
   Out << "\" }";
   return true;
 }
+bool CWriter::printConstantString(Constant *C, enum OperandContext Context) {
+  if(istacap) {
+    return yxk_printConstantString(OutHeaders, C, Context);
+  } else {
+    return yxk_printConstantString(Out, C, Context);
+  }
+}
 
 // isFPCSafeToPrint - Returns true if we may assume that CFP may be written out
 // textually as a double (rather than as a reference to a stack-allocated
@@ -1136,7 +1168,7 @@ static bool isFPCSafeToPrint(const ConstantFP *CFP) {
 /// Print out the casting for a cast operation. This does the double casting
 /// necessary for conversion to the destination type, if necessary.
 /// @brief Print a cast
-void CWriter::printCast(unsigned opc, Type *SrcTy, Type *DstTy) {
+void CWriter::yxk_printCast(raw_ostream &Out, unsigned opc, Type *SrcTy, Type *DstTy) {
   // Print the destination type cast
   switch (opc) {
   case Instruction::UIToFP:
@@ -1197,9 +1229,16 @@ void CWriter::printCast(unsigned opc, Type *SrcTy, Type *DstTy) {
     errorWithMessage("Invalid cast opcode");
   }
 }
+void CWriter::printCast(unsigned opc, Type *SrcTy, Type *DstTy) {
+  if(istacap) {
+    yxk_printCast(OutHeaders, opc, SrcTy, DstTy);
+  } else {
+    yxk_printCast(Out, opc, SrcTy, DstTy);
+  }
+}
 
 // printConstant - The LLVM Constant to C Constant converter.
-void CWriter::printConstant(Constant *CPV, enum OperandContext Context) {
+void CWriter::yxk_printConstant(raw_ostream &Out, Constant *CPV, enum OperandContext Context) {
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CPV)) {
     // TODO: VectorType are valid here, but not supported
     if (!CE->getType()->isIntegerTy() && !CE->getType()->isFloatingPointTy() &&
@@ -1647,11 +1686,18 @@ void CWriter::printConstant(Constant *CPV, enum OperandContext Context) {
     errorWithMessage("unknown constant type");
   }
 }
+void CWriter::printConstant(Constant *CPV, enum OperandContext Context) {
+  if(istacap) {
+    yxk_printConstant(OutHeaders, CPV, Context);
+  } else {
+    yxk_printConstant(Out, CPV, Context);
+  }
+}
 
 // Some constant expressions need to be casted back to the original types
 // because their operands were casted to the expected type. This function takes
 // care of detecting that case and printing the cast for the ConstantExpr.
-bool CWriter::printConstExprCast(ConstantExpr *CE) {
+bool CWriter::yxk_printConstExprCast(raw_ostream &Out, ConstantExpr *CE) {
   bool NeedsExplicitCast = false;
   Type *Ty = CE->getOperand(0)->getType();
   bool TypeIsSigned = false;
@@ -1701,12 +1747,18 @@ bool CWriter::printConstExprCast(ConstantExpr *CE) {
   }
   return NeedsExplicitCast;
 }
+bool CWriter::printConstExprCast(ConstantExpr *CE) {
+  if(istacap) {
+    return yxk_printConstExprCast(OutHeaders, CE);
+  } else {
+    return yxk_printConstExprCast(Out, CE);
+  }
+}
 
 //  Print a constant assuming that it is the operand for a given Opcode. The
 //  opcodes that care about sign need to cast their operands to the expected
 //  type before the operation proceeds. This function does the casting.
-void CWriter::printConstantWithCast(Constant *CPV, unsigned Opcode) {
-
+void CWriter::yxk_printConstantWithCast(raw_ostream &Out, Constant *CPV, unsigned Opcode) {
   // Extract the operand's type, we'll need it.
   Type *OpTy = CPV->getType();
   // TODO: VectorType are valid here, but not supported
@@ -1731,6 +1783,13 @@ void CWriter::printConstantWithCast(Constant *CPV, unsigned Opcode) {
     Out << ")";
   } else
     printConstant(CPV, ContextCasted);
+}
+void CWriter::printConstantWithCast(Constant *CPV, unsigned Opcode) {
+  if(istacap) {
+    yxk_printConstantWithCast(OutHeaders, CPV, Opcode);
+  } else {
+    yxk_printConstantWithCast(Out, CPV, Opcode);
+  }
 }
 
 std::string CWriter::GetValueName(const Value *Operand) {
@@ -1778,8 +1837,7 @@ std::string CWriter::GetValueName(const Value *Operand) {
 
 /// writeInstComputationInline - Emit the computation for the specified
 /// instruction inline, with no destination provided.
-void CWriter::writeInstComputationInline(Instruction &I) {
-  // Out << "ppppp||";
+void CWriter::yxk_writeInstComputationInline(raw_ostream &Out, Instruction &I) {
   // C can't handle non-power-of-two integer types
   unsigned mask = 0;
   Type *Ty = I.getType();
@@ -1795,15 +1853,20 @@ void CWriter::writeInstComputationInline(Instruction &I) {
   // Also truncate odd bit sizes
   if (mask)
     Out << "((";
-// Out << "yyyyyyyyyyyyyyyyyyyyy\n";
-// Out << "jjjj||";
+  // Out << "rrrrrrrr";
   visit(&I);
-// Out << "wwwww||";
   if (mask)
     Out << ")&" << mask << ")";
 }
+void CWriter::writeInstComputationInline(Instruction &I) {
+  if(istacap){
+    yxk_writeInstComputationInline(OutHeaders, I);
+  } else {
+    yxk_writeInstComputationInline(Out, I);
+  }
+}
 
-void CWriter::writeOperandInternal(Value *Operand,
+void CWriter::yxk_writeOperandInternal(raw_ostream &Out, Value *Operand,
                                    enum OperandContext Context) {
   if (Instruction *I = dyn_cast<Instruction>(Operand))
     // Should we inline this instruction to build a tree?
@@ -1827,8 +1890,17 @@ void CWriter::writeOperandInternal(Value *Operand,
       ParamNum.push_back(pnum);
     }}
 }
+void CWriter::writeOperandInternal(Value *Operand,
+                                   enum OperandContext Context) {
+  if(istacap) {
+    yxk_writeOperandInternal(OutHeaders, Operand, Context);
+  } else {
+    yxk_writeOperandInternal(Out, Operand, Context);
+  }
+}
 
-void CWriter::writeOperand(Value *Operand, enum OperandContext Context) {
+
+void CWriter::yxk_writeOperand(raw_ostream &Out, Value *Operand, enum OperandContext Context) {
   std::optional<Type *> InnerType = tryGetTypeOfAddressExposedValue(Operand);
   bool isAddressImplicit = InnerType.has_value();
   // Global variables are referenced as their addresses by llvm
@@ -1847,11 +1919,18 @@ void CWriter::writeOperand(Value *Operand, enum OperandContext Context) {
   if (isAddressImplicit)
     Out << ')';
 }
+void CWriter::writeOperand(Value *Operand, enum OperandContext Context) {
+  if(istacap) {
+    yxk_writeOperand(OutHeaders, Operand, Context);
+  } else {
+    yxk_writeOperand(Out, Operand, Context);
+  }
+}
 
 /// writeOperandDeref - Print the result of dereferencing the specified
 /// operand with '*'.  This is equivalent to printing '*' then using
 /// writeOperand, but avoids excess syntax in some cases.
-void CWriter::writeOperandDeref(Value *Operand) {
+void CWriter::yxk_writeOperandDeref(raw_ostream &Out, Value *Operand) {
   if (tryGetTypeOfAddressExposedValue(Operand)) {
     // Already something with an address exposed.
     writeOperandInternal(Operand);
@@ -1861,12 +1940,19 @@ void CWriter::writeOperandDeref(Value *Operand) {
     Out << ")";
   }
 }
+void CWriter::writeOperandDeref(Value *Operand) {
+  if(istacap) {
+    yxk_writeOperandDeref(OutHeaders, Operand);
+  } else {
+    yxk_writeOperandDeref(Out, Operand);
+  }
+}
 
 // Some instructions need to have their result value casted back to the
 // original types because their operands were casted to the expected type.
 // This function takes care of detecting that case and printing the cast
 // for the Instruction.
-bool CWriter::writeInstructionCast(Instruction &I) {
+bool CWriter::yxk_writeInstructionCast(raw_ostream &Out, Instruction &I) {
   Type *Ty = I.getOperand(0)->getType();
   switch (I.getOpcode()) {
   case Instruction::Add:
@@ -1892,6 +1978,13 @@ bool CWriter::writeInstructionCast(Instruction &I) {
     break;
   }
   return false;
+}
+bool CWriter::writeInstructionCast(Instruction &I) {
+  if(istacap) {
+    return yxk_writeInstructionCast(OutHeaders, I);
+  } else {
+    return yxk_writeInstructionCast(Out, I);
+  }
 }
 
 // Write the operand with a cast to another type based on the Opcode being used.
@@ -1935,7 +2028,7 @@ void CWriter::opcodeNeedsCast(
   }
 }
 
-void CWriter::writeOperandWithCast(Value *Operand, unsigned Opcode) {
+void CWriter::yxk_writeOperandWithCast(raw_ostream &Out, Value *Operand, unsigned Opcode) {
   // Write out the casted operand if we should, otherwise just write the
   // operand.
 
@@ -1951,8 +2044,15 @@ void CWriter::writeOperandWithCast(Value *Operand, unsigned Opcode) {
   } else
     writeOperand(Operand, ContextCasted);
 }
+void CWriter::writeOperandWithCast(Value *Operand, unsigned Opcode) {
+  if(istacap) {
+    yxk_writeOperandWithCast(OutHeaders, Operand, Opcode);
+  } else {
+    yxk_writeOperandWithCast(Out, Operand, Opcode);
+  }
+}
 
-void CWriter::writeVectorOperandWithCast(Value *Operand, unsigned Index,
+void CWriter::yxk_writeVectorOperandWithCast(raw_ostream &Out, Value *Operand, unsigned Index,
                                          unsigned Opcode) {
   // Write out the casted operand if we should, otherwise just write the
   // operand.
@@ -1971,6 +2071,14 @@ void CWriter::writeVectorOperandWithCast(Value *Operand, unsigned Index,
     Out << "(";
     writeOperand(Operand, ContextCasted);
     Out << ".vector[" << Index << "])";
+  }
+}
+void CWriter::writeVectorOperandWithCast(Value *Operand, unsigned Index,
+                                         unsigned Opcode) {
+  if(istacap) {
+    yxk_writeVectorOperandWithCast(OutHeaders, Operand, Index, Opcode);
+  } else {
+    yxk_writeVectorOperandWithCast(Out, Operand, Index, Opcode);
   }
 }
 
@@ -2582,22 +2690,36 @@ void p(){
 bool CWriter::doFinalization(Module &M) {
   // Output all code to the file
   if(MainIndex == true){
-    std::cout << "main------"<<std::endl;
-    p();
-    std::string methods = Out.str();
-
-    GetMainfirst(FileOut);
-    FileOut << methods;
-    // ClearTEEFun();
-  } else {
-    std::cout << "tac------"<<std::endl;
-    p();
-    std::string methods = Out.str();
+    // std::cout << "main------"<<std::endl;
+    // std::string methods = Out.str();
     _Out.clear();
     generateHeader(M);
     std::string header = OutHeaders.str() + Out.str();
     _Out.clear();
     _OutHeaders.clear();
+
+    // GetMainfirst(FileOut);
+    // FileOut << methods;
+    GetTA_hFirst(FileOut);
+    FileOut << header;
+    GetTA_hEnd(FileOut);
+    // GetTAfirst(FileOut);
+    // FileOut << header;
+    // GetTAend(FileOut);
+
+    // ClearTEEFun();
+  } else {
+    std::cout << "tac------"<<std::endl;
+
+    std::string methods = Out.str();
+    _Out.clear();
+    std::string mains = OutHeaders.str();
+    _OutHeaders.clear();
+    // _TA_HOut.clear();
+    // generateHeader(M);
+    // std::string header = OutHeaders.str() + Out.str();
+    // _Out.clear();
+    // _OutHeaders.clear();
     //输出看看header和methods都是啥玩意
     // std::cout << "-------------"<<std::endl;
     // std::cout << "header:" <<std::endl;
@@ -2611,9 +2733,11 @@ bool CWriter::doFinalization(Module &M) {
     FileOut << methods;
     GetTAend(FileOut);
     //ta.h
-    GetTA_hFirst(TA_HOut);
-    TA_HOut << header;
-    GetTA_hEnd(TA_HOut);
+    GetMainfirst(TA_HOut);
+    TA_HOut << mains;
+    // GetTA_hFirst(TA_HOut);
+    // TA_HOut << header;
+    // GetTA_hEnd(TA_HOut);
     // MainOut << methods;
     // ClearTEEFun();
   }
@@ -2794,7 +2918,7 @@ void CWriter::generateHeader(Module &M) {
 
   // Function declarations
   Out << "\n/* Function Declarations */\n";
-
+  Out << "/*";
   // Store the intrinsics which will be declared/defined below.
   SmallVector<Function *, 16> intrinsicsToDefine;
 
@@ -2901,7 +3025,7 @@ void CWriter::generateHeader(Module &M) {
 
     Out << ";\n";
   }
-
+  Out << "*/";
   // Output the global variable definitions and contents...
   if (!M.global_empty()) {
     Out << "\n\n/* Global Variable Definitions and Initialization */\n";
@@ -3935,187 +4059,194 @@ bool CWriter::canDeclareLocalLate(Instruction &I) {
   return true;
 }
 
-void CWriter::printFunction(Function &F) {
+void CWriter::yxk_printFunction(raw_ostream &Out, Function &F) {
   std::string Name = GetValueName(&F);
-  if(MainIndex == false && FunNameSet.find(&F) == FunNameSet.end()){
-    return;
-  }
-  if(MainIndex == true && FunNameSet.find(&F) != FunNameSet.end()){
-    return;
-  }
-  /// isStructReturn - Should this function actually return a struct by-value?
-  bool isStructReturn = F.hasStructRetAttr();
+    /// isStructReturn - Should this function actually return a struct by-value?
+    bool isStructReturn = F.hasStructRetAttr();
 
-  cwriter_assert(!F.isDeclaration());
-  if (F.hasDLLImportStorageClass())
-    Out << "__declspec(dllimport) ";
-  if (F.hasDLLExportStorageClass())
-    Out << "__declspec(dllexport) ";
-  if (F.hasLocalLinkage())
-    Out << "static ";
+    cwriter_assert(!F.isDeclaration());
+    if (F.hasDLLImportStorageClass())
+      Out << "__declspec(dllimport) ";
+    if (F.hasDLLExportStorageClass())
+      Out << "__declspec(dllexport) ";
+    if (F.hasLocalLinkage())
+      Out << "static ";
 
-  
+    
 
-  FunctionType *FTy = F.getFunctionType();
+    FunctionType *FTy = F.getFunctionType();
 
-  bool shouldFixMain = false;
-  if (Name == "main") {
-    if (!isStandardMain(FTy)) {
-      // Implementations are free to support non-standard signatures for main(),
-      // so it would be unreasonable to make it an outright error.
-      errs() << "CBackend warning: main() has an unrecognized signature. The "
-                "types emitted will not be fixed to match the C standard.\n";
-    } else {
-      shouldFixMain = true;
-    }
-  }
-
-  printFunctionProto(Out, &F, Name);
-
-  Out << " {\n";
-
-  //main.c的变量定义
-  if(Name == "main") {
-    isMainfinal = true;
-    Out << "\n";
-    Out << "  TEEC_Result res;\n";
-    Out << "  TEEC_Context ctx;\n";
-    Out << "  TEEC_Session sess;\n";
-    Out << "  TEEC_Operation op;\n";
-    Out << "  TEEC_UUID uuid = TA_H_UUID;\n";
-    Out << "  uint32_t err_origin;\n";
-    Out << "  res = TEEC_InitializeContext(NULL, &ctx);\n";
-    Out << "  res = TEEC_OpenSession(&ctx, &sess, &uuid,\n";
-    Out << "            TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);\n";
-    Out << "\n";
-  }
-
-  // Out << "-----------\n";
-
-  if (shouldFixMain) {
-    // Cast the arguments to main() to the expected LLVM IR types and names.
-    unsigned Idx = 1;
-    FunctionType::param_iterator I = FTy->param_begin(), E = FTy->param_end();
-    iterator_range<Function::arg_iterator> args = F.args();
-    Function::arg_iterator ArgName = args.begin();
-
-    for (; I != E; ++I) {
-      Type *ArgTy = *I;
-      Out << "  ";
-      printTypeName(Out, ArgTy);
-      Out << ' ' << GetValueName(ArgName) << " = (";
-      printTypeName(Out, ArgTy);
-      Out << ")" << MainArgs.begin()[Idx].second << ";\n";
-
-      ++Idx;
-      ++ArgName;
-    }
-  }
-
-// Out << "-----------\n";
-
-  // If this is a struct return function, handle the result with magic.
-  if (isStructReturn) {
-    Type *StructTy = F.getParamStructRetType(0);
-    Out << "  ";
-    printTypeName(Out, StructTy, false)
-        << " StructReturn;  /* Struct return temporary */\n";
-
-    Out << "  ";
-    printTypeName(Out, StructTy, false)
-        << "* " << GetValueName(F.arg_begin()) << " = &StructReturn;\n";
-  }
-
-// Out << "-----------\n";
-  bool PrintedVar = false;
-
-  // print local variable information for the function
-  for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
-    if (AllocaInst *AI = isDirectAlloca(&*I)) {
-      unsigned Alignment = AI->getAlign().value();
-      bool IsOveraligned =
-          Alignment &&
-          Alignment > TD->getABITypeAlign(AI->getAllocatedType()).value();
-      Out << "  ";
-
-      //变量定义
-      // Out << "yyyyyyyyyyyyyyyy";
-
-      if (IsOveraligned) {
-        headerUseAligns();
-        Out << "__PREFIXALIGN__(" << Alignment << ") ";
+    bool shouldFixMain = false;
+    if (Name == "main") {
+      if (!isStandardMain(FTy)) {
+        // Implementations are free to support non-standard signatures for main(),
+        // so it would be unreasonable to make it an outright error.
+        errs() << "CBackend warning: main() has an unrecognized signature. The "
+                  "types emitted will not be fixed to match the C standard.\n";
+      } else {
+        shouldFixMain = true;
       }
-      printTypeNameForAddressableValue(Out, AI->getAllocatedType(), false);
-      // std::cout << GetValueName(AI)<<std::endl;
-      //变量定义
-      // Out << "yyyyyyyyyyyyyyyy";
+    }
 
+    printFunctionProto(Out, &F, Name);
 
-      Out << ' ' << GetValueName(AI);
-      if (IsOveraligned) {
-        headerUseAligns();
-        Out << " __POSTFIXALIGN__(" << Alignment << ")";
+    Out << " {\n";
+
+    //main.c的变量定义
+    if(Name == "main") {
+      isMainfinal = true;
+      Out << "\n";
+      Out << "  TEEC_Result res;\n";
+      Out << "  TEEC_Context ctx;\n";
+      Out << "  TEEC_Session sess;\n";
+      Out << "  TEEC_Operation op;\n";
+      Out << "  TEEC_UUID uuid = TA_H_UUID;\n";
+      Out << "  uint32_t err_origin;\n";
+      Out << "  res = TEEC_InitializeContext(NULL, &ctx);\n";
+      Out << "  res = TEEC_OpenSession(&ctx, &sess, &uuid,\n";
+      Out << "            TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);\n";
+      Out << "\n";
+    }
+
+    // Out << "-----------\n";
+
+    if (shouldFixMain) {
+      // Cast the arguments to main() to the expected LLVM IR types and names.
+      unsigned Idx = 1;
+      FunctionType::param_iterator I = FTy->param_begin(), E = FTy->param_end();
+      iterator_range<Function::arg_iterator> args = F.args();
+      Function::arg_iterator ArgName = args.begin();
+
+      for (; I != E; ++I) {
+        Type *ArgTy = *I;
+        Out << "  ";
+        printTypeName(Out, ArgTy);
+        Out << ' ' << GetValueName(ArgName) << " = (";
+        printTypeName(Out, ArgTy);
+        Out << ")" << MainArgs.begin()[Idx].second << ";\n";
+
+        ++Idx;
+        ++ArgName;
       }
-      Out << ";    /* Address-exposed local */\n";
-      PrintedVar = true;
-    } else if (!isEmptyType(I->getType()) && !isInlinableInst(*I)) {
-      if (!canDeclareLocalLate(*I)) {
+    }
+
+    // Out << "-----------\n";
+
+    // If this is a struct return function, handle the result with magic.
+    if (isStructReturn) {
+      Type *StructTy = F.getParamStructRetType(0);
+      Out << "  ";
+      printTypeName(Out, StructTy, false)
+          << " StructReturn;  /* Struct return temporary */\n";
+
+      Out << "  ";
+      printTypeName(Out, StructTy, false)
+          << "* " << GetValueName(F.arg_begin()) << " = &StructReturn;\n";
+    }
+
+    // Out << "-----------\n";
+    bool PrintedVar = false;
+
+    // print local variable information for the function
+    for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ++I) {
+      if (AllocaInst *AI = isDirectAlloca(&*I)) {
+        unsigned Alignment = AI->getAlign().value();
+        bool IsOveraligned =
+            Alignment &&
+            Alignment > TD->getABITypeAlign(AI->getAllocatedType()).value();
         Out << "  ";
 
         //变量定义
-        Out << "xxxxxxxxxxxx";
+        // Out << "yyyyyyyyyyyyyyyy";
 
-        printTypeName(Out, I->getType(), false) << ' ' << GetValueName(&*I);
+        if (IsOveraligned) {
+          headerUseAligns();
+          Out << "__PREFIXALIGN__(" << Alignment << ") ";
+        }
+        printTypeNameForAddressableValue(Out, AI->getAllocatedType(), false);
+        // std::cout << GetValueName(AI)<<std::endl;
+        //变量定义
+        // Out << "yyyyyyyyyyyyyyyy";
 
-        Out << "xxxxxxxxxxxx";
 
-        Out << ";\n";
+        Out << ' ' << GetValueName(AI);
+        if (IsOveraligned) {
+          headerUseAligns();
+          Out << " __POSTFIXALIGN__(" << Alignment << ")";
+        }
+        Out << ";    /* Address-exposed local */\n";
+        PrintedVar = true;
+      } else if (!isEmptyType(I->getType()) && !isInlinableInst(*I)) {
+        if (!canDeclareLocalLate(*I)) {
+          Out << "  ";
+
+          //变量定义
+          // Out << "xxxxxxxxxxxx";
+
+          printTypeName(Out, I->getType(), false) << ' ' << GetValueName(&*I);
+
+          // Out << "xxxxxxxxxxxx";
+
+          Out << ";\n";
+        }
+
+        if (isa<PHINode>(*I)) { // Print out PHI node temporaries as well...
+          Out << "  ";
+          printTypeName(Out, I->getType(), false)
+              << ' ' << (GetValueName(&*I) + "__PHI_TEMPORARY");
+          Out << ";\n";
+        }
+        PrintedVar = true;
       }
 
-      if (isa<PHINode>(*I)) { // Print out PHI node temporaries as well...
-        Out << "  ";
-        printTypeName(Out, I->getType(), false)
-            << ' ' << (GetValueName(&*I) + "__PHI_TEMPORARY");
-        Out << ";\n";
+      // Out << "kkkkkkkkkkkkk";
+      // We need a temporary for the BitCast to use so it can pluck a value out
+      // of a union to do the BitCast. This is separate from the need for a
+      // variable to hold the result of the BitCast.
+      if (isFPIntBitCast(*I)) {
+        headerUseBitCastUnion();
+        Out << "  llvmBitCastUnion " << GetValueName(&*I)
+            << "__BITCAST_TEMPORARY;\n";
+        PrintedVar = true;
       }
-      PrintedVar = true;
     }
 
-    // Out << "kkkkkkkkkkkkk";
-    // We need a temporary for the BitCast to use so it can pluck a value out
-    // of a union to do the BitCast. This is separate from the need for a
-    // variable to hold the result of the BitCast.
-    if (isFPIntBitCast(*I)) {
-      headerUseBitCastUnion();
-      Out << "  llvmBitCastUnion " << GetValueName(&*I)
-          << "__BITCAST_TEMPORARY;\n";
-      PrintedVar = true;
+    // Out << "-----------111111\n";
+
+    if (PrintedVar)
+      Out << '\n';
+
+    // Out << "-----------\n";
+    // print the basic blocks ta函数的调用在这一部分
+    for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+      if (Loop *L = LI->getLoopFor(&*BB)) {
+        // Out << "kkkkkkkkkk";
+        if (L->getHeader() == &*BB && L->getParentLoop() == nullptr)
+          printLoop(L);
+      } else {
+        // Out << "kkkkkkkkkk";
+        printBasicBlock(&*BB);
+      }
     }
+    // Out << "-----------\n";
+
+    Out << "}\n\n";
+}
+void CWriter::printFunction(Function &F) {
+  
+  if(MainIndex == true || (MainIndex == false && FunNameSet.find(&F) != FunNameSet.end()))
+  {
+    yxk_printFunction(Out, F);
+    
+  } else
+  {
+    istacap = true;
+    yxk_printFunction(OutHeaders, F);
+    istacap = false;
   }
-
-  // Out << "-----------111111\n";
-
-  if (PrintedVar)
-    Out << '\n';
-
-// Out << "-----------\n";
-  // print the basic blocks ta函数的调用在这一部分
-  for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
-    if (Loop *L = LI->getLoopFor(&*BB)) {
-      // Out << "kkkkkkkkkk";
-      if (L->getHeader() == &*BB && L->getParentLoop() == nullptr)
-        printLoop(L);
-    } else {
-      // Out << "kkkkkkkkkk";
-      printBasicBlock(&*BB);
-    }
-  }
-  // Out << "-----------\n";
-
-  Out << "}\n\n";
 }
 
-void CWriter::printLoop(Loop *L) {
+void CWriter::yxk_printLoop(raw_ostream &Out, Loop *L) {
   Out << "  do {     /* Syntactic loop '" << L->getHeader()->getName()
       << "' to make GCC happy */\n";
   for (unsigned i = 0, e = L->getBlocks().size(); i != e; ++i) {
@@ -4129,77 +4260,95 @@ void CWriter::printLoop(Loop *L) {
   Out << "  } while (1); /* end of syntactic loop '"
       << L->getHeader()->getName() << "' */\n";
 }
-
-void CWriter::printBasicBlock(BasicBlock *BB) {
-  // Don't print the label for the basic block if there are no uses, or if
-  // the only terminator use is the predecessor basic block's terminator.
-  // We have to scan the use list because PHI nodes use basic blocks too but
-  // do not require a label to be generated.
-  bool NeedsLabel = false;
-  for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI)
-    if (isGotoCodeNecessary(*PI, BB)) {
-      NeedsLabel = true;
-      break;
-    }
-
-  if (NeedsLabel) {
-    // std::cout << "bb:"<<GetValueName(BB)<<std::endl;
-    Out << GetValueName(BB) << ":";
-    // A label immediately before a late variable declaration is problematic,
-    // because "a label can only be part of a statement and a declaration is not
-    // a statement" (GCC). Adding a ";" is a simple workaround.
-    if (DeclareLocalsLate) {
-      Out << ";";
-    }
-    Out << "\n";
+void CWriter::printLoop(Loop *L) {
+  if(istacap){
+    yxk_printLoop(OutHeaders, L);
+  } else {
+    yxk_printLoop(Out, L);
   }
+}
 
-  // Output all of the instructions in the basic block...
-  for (BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
-    // Out << "1111111111111111\n";
-    DILocation *Loc = (*II).getDebugLoc();
-    if (Loc != nullptr && Loc->getLine() != 0 &&
-        LastAnnotatedSourceLine != Loc->getLine()) {
-          // Out << "1111111111111111\n";
-      std::string Directory = Loc->getDirectory().str();
-      std::replace(Directory.begin(), Directory.end(), '\\', '/');
-      std::string Filename = Loc->getFilename().str();
-      std::replace(Filename.begin(), Filename.end(), '\\', '/');
-
-      if (!Directory.empty() && Directory[Directory.size() - 1] != '/' &&
-          !Filename.empty() && Filename[0] != '/')
-        Directory.push_back('/');
-      // std::cout << Loc->getLine()<<std::endl;
-      Out << "#line " << Loc->getLine() << " \"" << Directory << Filename
-          << "\""
-          << "\n";
-      LastAnnotatedSourceLine = Loc->getLine();
-    }
-    if (!isInlinableInst(*II) && !isDirectAlloca(&*II)) {
-      // Out << "2222222222\n";
-      Out << "  ";
-      if (!isEmptyType(II->getType()) && !isInlineAsm(*II)) {
-        // Out << "oooo";
-        if (canDeclareLocalLate(*II)) {
-          printTypeName(Out, II->getType(), false) << ' ';
-        }
-        // std::cout <<  GetValueName(&*II)<<std::endl;
-        Out << GetValueName(&*II) << " = ";
-        // Out << "2222222222222\n";
+void CWriter::yxk_printBasicBlock(raw_ostream &Out, BasicBlock *BB) {
+  // Out << "1111111111111111\n";
+    // Don't print the label for the basic block if there are no uses, or if
+    // the only terminator use is the predecessor basic block's terminator.
+    // We have to scan the use list because PHI nodes use basic blocks too but
+    // do not require a label to be generated.
+    bool NeedsLabel = false;
+    for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI)
+      if (isGotoCodeNecessary(*PI, BB)) {
+        NeedsLabel = true;
+        break;
       }
-      // Out << "ppppp";
-      writeInstComputationInline(*II);
-      Out << ";\n";
-    }
-  }
 
-  // Don't emit prefix or suffix for the terminator.
-  visit(*BB->getTerminator());
+    if (NeedsLabel) {
+      // std::cout << "bb:"<<GetValueName(BB)<<std::endl;
+      Out << GetValueName(BB) << ":";
+      // A label immediately before a late variable declaration is problematic,
+      // because "a label can only be part of a statement and a declaration is not
+      // a statement" (GCC). Adding a ";" is a simple workaround.
+      if (DeclareLocalsLate) {
+        Out << ";";
+      }
+      Out << "\n";
+    }
+// Out << "33333333333333\n";
+    // Output all of the instructions in the basic block...
+    for (BasicBlock::iterator II = BB->begin(), E = --BB->end(); II != E; ++II) {
+      // Out << "66666666666\n";
+      DILocation *Loc = (*II).getDebugLoc();
+      if (Loc != nullptr && Loc->getLine() != 0 &&
+          LastAnnotatedSourceLine != Loc->getLine()) {
+            // Out << "1111111111111111\n";
+        std::string Directory = Loc->getDirectory().str();
+        std::replace(Directory.begin(), Directory.end(), '\\', '/');
+        std::string Filename = Loc->getFilename().str();
+        std::replace(Filename.begin(), Filename.end(), '\\', '/');
+
+        if (!Directory.empty() && Directory[Directory.size() - 1] != '/' &&
+            !Filename.empty() && Filename[0] != '/')
+          Directory.push_back('/');
+        // std::cout << Loc->getLine()<<std::endl;
+        Out << "#line " << Loc->getLine() << " \"" << Directory << Filename
+            << "\""
+            << "\n";
+        LastAnnotatedSourceLine = Loc->getLine();
+      }
+      // Out << "4444444444444\n";
+      if (!isInlinableInst(*II) && !isDirectAlloca(&*II)) {
+        // Out << "2222222222\n";
+        Out << "  ";
+        if (!isEmptyType(II->getType()) && !isInlineAsm(*II)) {
+          // Out << "oooo";
+          if (canDeclareLocalLate(*II)) {
+            printTypeName(Out, II->getType(), false) << ' ';
+          }
+          // std::cout <<  GetValueName(&*II)<<std::endl;
+          Out << GetValueName(&*II) << " = ";
+          // Out << "2222222222222\n";
+        }
+        // Out << "ppppp";
+        writeInstComputationInline(*II);
+        Out << ";\n";
+      }
+      // Out << "55555555555\n";
+    }
+
+    // Don't emit prefix or suffix for the terminator.
+    // Out << "8888888";
+    visit(*BB->getTerminator());
+}
+void CWriter::printBasicBlock(BasicBlock *BB) {
+  if(istacap) {
+    yxk_printBasicBlock(OutHeaders, BB);
+  } else {
+    yxk_printBasicBlock(Out, BB);
+  }
 }
 
 // Specific Instruction type classes... note that all of the casts are
 // necessary because we use the instruction classes as opaque types...
-void CWriter::visitReturnInst(ReturnInst &I) {
+void CWriter::yxk_visitReturnInst(raw_ostream &Out, ReturnInst &I) {
   if(isMainfinal) {
     Out << "\n";
     Out << "  TEEC_CloseSession(&sess);\n";
@@ -4227,12 +4376,20 @@ void CWriter::visitReturnInst(ReturnInst &I) {
   Out << "  return";
   if (I.getNumOperands()) {
     Out << ' ';
+    // Out << "ttttt";
     writeOperand(I.getOperand(0), ContextCasted);
   }
   Out << ";\n";
 }
+void CWriter::visitReturnInst(ReturnInst &I) {
+  if(istacap) {
+    yxk_visitReturnInst(OutHeaders, I);
+  } else {
+    yxk_visitReturnInst(Out, I);
+  }
+}
 
-void CWriter::visitSwitchInst(SwitchInst &SI) {
+void CWriter::yxk_visitSwitchInst(raw_ostream &Out, SwitchInst &SI) {
   CurInstr = &SI;
 
   Value *Cond = SI.getCondition();
@@ -4286,20 +4443,41 @@ void CWriter::visitSwitchInst(SwitchInst &SI) {
   }
   Out << "\n";
 }
+void CWriter::visitSwitchInst(SwitchInst &SI) {
+  if(istacap) {
+    yxk_visitSwitchInst(OutHeaders, SI);
+  } else {
+    yxk_visitSwitchInst(Out, SI);
+  }
+}
 
-void CWriter::visitIndirectBrInst(IndirectBrInst &IBI) {
+void CWriter::yxk_visitIndirectBrInst(raw_ostream &Out, IndirectBrInst &IBI) {
   CurInstr = &IBI;
 
   Out << "  goto *(void*)(";
   writeOperand(IBI.getOperand(0));
   Out << ");\n";
 }
+void CWriter::visitIndirectBrInst(IndirectBrInst &IBI) {
+  if(istacap) {
+    yxk_visitIndirectBrInst(OutHeaders, IBI);
+  } else {
+    yxk_visitIndirectBrInst(Out, IBI);
+  }
+}
 
-void CWriter::visitUnreachableInst(UnreachableInst &I) {
+void CWriter::yxk_visitUnreachableInst(raw_ostream &Out, UnreachableInst &I) {
   CurInstr = &I;
 
   headerUseUnreachable();
   Out << "  __builtin_unreachable();\n\n";
+}
+void CWriter::visitUnreachableInst(UnreachableInst &I) {
+  if(istacap) {
+    yxk_visitUnreachableInst(OutHeaders, I);
+  } else {
+    yxk_visitUnreachableInst(Out, I);
+  }
 }
 
 bool CWriter::isGotoCodeNecessary(BasicBlock *From, BasicBlock *To) {
@@ -4316,7 +4494,7 @@ bool CWriter::isGotoCodeNecessary(BasicBlock *From, BasicBlock *To) {
   return false;
 }
 
-void CWriter::printPHICopiesForSuccessor(BasicBlock *CurBlock,
+void CWriter::yxk_printPHICopiesForSuccessor(raw_ostream &Out, BasicBlock *CurBlock,
                                          BasicBlock *Successor,
                                          unsigned Indent) {
   for (BasicBlock::iterator I = Successor->begin(); isa<PHINode>(I); ++I) {
@@ -4331,8 +4509,17 @@ void CWriter::printPHICopiesForSuccessor(BasicBlock *CurBlock,
     }
   }
 }
+void CWriter::printPHICopiesForSuccessor(BasicBlock *CurBlock,
+                                         BasicBlock *Successor,
+                                         unsigned Indent) {
+  if(istacap) {
+    yxk_printPHICopiesForSuccessor(OutHeaders, CurBlock, Successor, Indent);
+  } else {
+    yxk_printPHICopiesForSuccessor(Out, CurBlock, Successor, Indent);
+  }
+}
 
-void CWriter::printBranchToBlock(BasicBlock *CurBB, BasicBlock *Succ,
+void CWriter::yxk_printBranchToBlock(raw_ostream &Out, BasicBlock *CurBB, BasicBlock *Succ,
                                  unsigned Indent) {
   if (isGotoCodeNecessary(CurBB, Succ)) {
     Out << std::string(Indent, ' ') << "  goto ";
@@ -4340,10 +4527,18 @@ void CWriter::printBranchToBlock(BasicBlock *CurBB, BasicBlock *Succ,
     Out << ";\n";
   }
 }
+void CWriter::printBranchToBlock(BasicBlock *CurBB, BasicBlock *Succ,
+                                 unsigned Indent) {
+  if(istacap) {
+    yxk_printBranchToBlock(OutHeaders, CurBB, Succ, Indent);
+  } else {
+    yxk_printBranchToBlock(Out, CurBB, Succ, Indent);
+  }
+}
 
 // Branch instruction printing - Avoid printing out a branch to a basic block
 // that immediately succeeds the current one.
-void CWriter::visitBranchInst(BranchInst &I) {
+void CWriter::yxk_visitBranchInst(raw_ostream &Out, BranchInst &I) {
   CurInstr = &I;
 
   if (I.isConditional()) {
@@ -4377,18 +4572,32 @@ void CWriter::visitBranchInst(BranchInst &I) {
   }
   Out << "\n";
 }
+void CWriter::visitBranchInst(BranchInst &I) {
+  if(istacap) {
+    yxk_visitBranchInst(OutHeaders, I);
+  } else {
+    yxk_visitBranchInst(Out, I);
+  }
+}
 
 // PHI nodes get copied into temporary values at the end of predecessor basic
 // blocks.  We now need to copy these temporary values into the REAL value for
 // the PHI.
-void CWriter::visitPHINode(PHINode &I) {
+void CWriter::yxk_visitPHINode(raw_ostream &Out, PHINode &I) {
   CurInstr = &I;
 
   writeOperand(&I);
   Out << "__PHI_TEMPORARY";
 }
+void CWriter::visitPHINode(PHINode &I) {
+  if(istacap) {
+    yxk_visitPHINode(OutHeaders, I);
+  } else {
+    yxk_visitPHINode(Out, I);
+  }
+}
 
-void CWriter::visitUnaryOperator(UnaryOperator &I) {
+void CWriter::yxk_visitUnaryOperator(raw_ostream &Out, UnaryOperator &I) {
   CurInstr = &I;
 
   // Currently the only unary operator supported is FNeg, which was introduced
@@ -4428,10 +4637,16 @@ void CWriter::visitUnaryOperator(UnaryOperator &I) {
     Out << ")";
   }
 }
+void CWriter::visitUnaryOperator(UnaryOperator &I) {
+  if(istacap){
+    yxk_visitUnaryOperator(OutHeaders, I);
+  } else {
+    yxk_visitUnaryOperator(Out, I);
+  }
+}
 
-void CWriter::visitBinaryOperator(BinaryOperator &I) {
+void CWriter::yxk_visitBinaryOperator(raw_ostream &Out, BinaryOperator &I) {
   using namespace PatternMatch;
-
   CurInstr = &I;
 
   // binary instructions, shift instructions, setCond instructions.
@@ -4571,8 +4786,16 @@ void CWriter::visitBinaryOperator(BinaryOperator &I) {
       Out << "))";
   }
 }
+void CWriter::visitBinaryOperator(BinaryOperator &I) {
+  using namespace PatternMatch;
+  if(istacap){
+    yxk_visitBinaryOperator(OutHeaders, I);
+  } else {
+    yxk_visitBinaryOperator(Out, I);
+  }
+}
 
-void CWriter::visitICmpInst(ICmpInst &I) {
+void CWriter::yxk_visitICmpInst(raw_ostream &Out, ICmpInst &I) {
   CurInstr = &I;
 
   if (I.getType()->isVectorTy() ||
@@ -4634,8 +4857,15 @@ void CWriter::visitICmpInst(ICmpInst &I) {
   if (NeedsClosingParens)
     Out << "))";
 }
+void CWriter::visitICmpInst(ICmpInst &I) {
+  if(istacap) {
+    yxk_visitICmpInst(OutHeaders, I);
+  } else {
+    yxk_visitICmpInst(Out, I);
+  }
+}
 
-void CWriter::visitFCmpInst(FCmpInst &I) {
+void CWriter::yxk_visitFCmpInst(raw_ostream &Out, FCmpInst &I) {
   CurInstr = &I;
 
   if (I.getType()->isVectorTy()) {
@@ -4665,6 +4895,13 @@ void CWriter::visitFCmpInst(FCmpInst &I) {
   writeOperand(I.getOperand(1), ContextCasted);
   Out << ")";
 }
+void CWriter::visitFCmpInst(FCmpInst &I) {
+  if(istacap) {
+    yxk_visitFCmpInst(OutHeaders, I);
+  } else {
+    yxk_visitFCmpInst(Out, I);
+  }
+}
 
 static const char *getFloatBitCastField(Type *Ty) {
   switch (Ty->getTypeID()) {
@@ -4684,7 +4921,7 @@ static const char *getFloatBitCastField(Type *Ty) {
   }
 }
 
-void CWriter::visitCastInst(CastInst &I) {
+void CWriter::yxk_visitCastInst(raw_ostream &Out, CastInst &I) {
   CurInstr = &I;
 
   Type *DstTy = I.getType();
@@ -4738,8 +4975,15 @@ void CWriter::visitCastInst(CastInst &I) {
   }
   Out << ')';
 }
+void CWriter::visitCastInst(CastInst &I) {
+  if(istacap) {
+    yxk_visitCastInst(OutHeaders, I);
+  } else {
+    yxk_visitCastInst(Out, I);
+  }
+}
 
-void CWriter::visitSelectInst(SelectInst &I) {
+void CWriter::yxk_visitSelectInst(raw_ostream &Out, SelectInst &I) {
   CurInstr = &I;
 
   Out << "llvm_select_";
@@ -4755,6 +4999,13 @@ void CWriter::visitSelectInst(SelectInst &I) {
   cwriter_assert(
       I.getCondition()->getType()->isVectorTy() ==
       I.getType()->isVectorTy()); // TODO: might be scalarty == vectorty
+}
+void CWriter::visitSelectInst(SelectInst &I) {
+  if(istacap) {
+    yxk_visitSelectInst(OutHeaders, I);
+  } else {
+    yxk_visitSelectInst(Out, I);
+  }
 }
 
 // Returns the macro name or value of the max or min of an integer type
@@ -5157,8 +5408,7 @@ bool CWriter::lowerIntrinsics(Function &F) {
 }
 
 //处理调用函数
-void CWriter::visitCallInst(CallInst &I) {
-  // Out << "yxkyxkxyi||";
+void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
   CurInstr = &I;
   std::string fname;
   Value *Tmp = I.getCalledOperand();
@@ -5332,10 +5582,17 @@ void CWriter::visitCallInst(CallInst &I) {
   ParamIndex = false;
   ParamNum.clear();
 }
+void CWriter::visitCallInst(CallInst &I) {
+  if(istacap) {
+    yxk_visitCallInst(OutHeaders, I);
+  } else {
+    yxk_visitCallInst(Out, I);
+  }
+}
 
 /// visitBuiltinCall - Handle the call to the specified builtin.  Returns true
 /// if the entire call is handled, return false if it wasn't handled
-bool CWriter::visitBuiltinCall(CallInst &I, Intrinsic::ID ID) {
+bool CWriter::yxk_visitBuiltinCall(raw_ostream &Out, CallInst &I, Intrinsic::ID ID) {
   CurInstr = &I;
 
   switch (ID) {
@@ -5511,6 +5768,13 @@ bool CWriter::visitBuiltinCall(CallInst &I, Intrinsic::ID ID) {
     return false; // these use the normal function call emission
   }
 }
+bool CWriter::visitBuiltinCall(CallInst &I, Intrinsic::ID ID) {
+  if(istacap) {
+    return yxk_visitBuiltinCall(OutHeaders, I, ID);
+  } else {
+    return yxk_visitBuiltinCall(Out, I, ID);
+  }
+}
 
 // This converts the llvm constraint string to something gcc is expecting.
 // TODO: work out platform independent constraints and factor those out
@@ -5581,7 +5845,7 @@ static std::string gccifyAsm(std::string asmstr) {
 
 // TODO: assumptions about what consume arguments from the call are likely wrong
 //      handle communitivity
-void CWriter::visitInlineAsm(CallInst &CI) {
+void CWriter::yxk_visitInlineAsm(raw_ostream &Out, CallInst &CI) {
   CurInstr = &CI;
 
   InlineAsm *as = cast<InlineAsm>(CI.getCalledOperand());
@@ -5704,8 +5968,15 @@ void CWriter::visitInlineAsm(CallInst &CI) {
 
   Out << ")";
 }
+void CWriter::visitInlineAsm(CallInst &CI) {
+  if(istacap) {
+    yxk_visitInlineAsm(OutHeaders, CI);
+  } else {
+    yxk_visitInlineAsm(Out, CI);
+  }
+}
 
-void CWriter::visitAllocaInst(AllocaInst &I) {
+void CWriter::yxk_visitAllocaInst(raw_ostream &Out, AllocaInst &I) {
   CurInstr = &I;
 
   headerUseBuiltinAlloca();
@@ -5720,10 +5991,16 @@ void CWriter::visitAllocaInst(AllocaInst &I) {
   }
   Out << "))";
 }
+void CWriter::visitAllocaInst(AllocaInst &I) {
+  if(istacap) {
+    yxk_visitAllocaInst(OutHeaders, I);
+  } else {
+    yxk_visitAllocaInst(Out, I);
+  }
+}
 
-void CWriter::printGEPExpression(Value *Ptr, unsigned NumOperands,
+void CWriter::yxk_printGEPExpression(raw_ostream &Out, Value *Ptr, unsigned NumOperands,
                                  gep_type_iterator I, gep_type_iterator E) {
-
   // If there are no indices, just print out the pointer.
   if (I == E) {
     writeOperand(Ptr);
@@ -5814,8 +6091,17 @@ void CWriter::printGEPExpression(Value *Ptr, unsigned NumOperands,
   }
   Out << ')';
 }
+void CWriter::printGEPExpression(Value *Ptr, unsigned NumOperands,
+                                 gep_type_iterator I, gep_type_iterator E) {
 
-void CWriter::writeMemoryAccess(Value *Operand, Type *OperandType,
+  if(istacap) {
+    yxk_printGEPExpression(OutHeaders, Ptr, NumOperands, I, E);
+  } else {
+    yxk_printGEPExpression(Out, Ptr, NumOperands, I, E);
+  }
+}
+
+void CWriter::yxk_writeMemoryAccess(raw_ostream &Out, Value *Operand, Type *OperandType,
                                 bool IsVolatile, unsigned Alignment /*bytes*/) {
   auto ActualType = tryGetTypeOfAddressExposedValue(Operand);
   if (ActualType.has_value() && !IsVolatile) {
@@ -5856,15 +6142,30 @@ void CWriter::writeMemoryAccess(Value *Operand, Type *OperandType,
     Out << ")";
   }
 }
+void CWriter::writeMemoryAccess(Value *Operand, Type *OperandType,
+                                bool IsVolatile, unsigned Alignment /*bytes*/) {
+  if(istacap) {
+    yxk_writeMemoryAccess(OutHeaders, Operand, OperandType, IsVolatile, Alignment);
+  } else {
+    yxk_writeMemoryAccess(Out, Operand, OperandType, IsVolatile, Alignment);
+  }
+}
 
-void CWriter::visitLoadInst(LoadInst &I) {
+void CWriter::yxk_visitLoadInst(raw_ostream &Out, LoadInst &I) {
   CurInstr = &I;
 
   writeMemoryAccess(I.getOperand(0), I.getType(), I.isVolatile(),
                     I.getAlign().value());
 }
+void CWriter::visitLoadInst(LoadInst &I) {
+  if(istacap) {
+    yxk_visitLoadInst(OutHeaders, I);
+  } else {
+    yxk_visitLoadInst(Out, I);
+  }
+}
 
-void CWriter::visitStoreInst(StoreInst &I) {
+void CWriter::yxk_visitStoreInst(raw_ostream &Out, StoreInst &I) {
   CurInstr = &I;
 
   writeMemoryAccess(I.getPointerOperand(), I.getOperand(0)->getType(),
@@ -5883,8 +6184,15 @@ void CWriter::visitStoreInst(StoreInst &I) {
   if (BitMask)
     Out << ") & " << BitMask << ")";
 }
+void CWriter::visitStoreInst(StoreInst &I) {
+  if(istacap) {
+    yxk_visitStoreInst(OutHeaders, I);
+  } else {
+    yxk_visitStoreInst(Out, I);
+  }
+}
 
-void CWriter::visitFenceInst(FenceInst &I) {
+void CWriter::yxk_visitFenceInst(raw_ostream &Out, FenceInst &I) {
   headerUseThreadFence();
   Out << "__atomic_thread_fence(";
   switch (I.getOrdering()) {
@@ -5910,8 +6218,15 @@ void CWriter::visitFenceInst(FenceInst &I) {
   }
   Out << ");\n";
 }
+void CWriter::visitFenceInst(FenceInst &I) {
+  if(istacap) {
+    yxk_visitFenceInst(OutHeaders, I);
+  } else {
+    yxk_visitFenceInst(Out, I);
+  }
+}
 
-void CWriter::visitGetElementPtrInst(GetElementPtrInst &I) {
+void CWriter::yxk_visitGetElementPtrInst(raw_ostream &Out, GetElementPtrInst &I) {
   CurInstr = &I;
 
   // GetElementPtrInst has a special form that takes a vector as the only index
@@ -5945,8 +6260,15 @@ void CWriter::visitGetElementPtrInst(GetElementPtrInst &I) {
                        gep_type_begin(I), gep_type_end(I));
   }
 }
+void CWriter::visitGetElementPtrInst(GetElementPtrInst &I) {
+  if(istacap) {
+    yxk_visitGetElementPtrInst(OutHeaders, I);
+  } else {
+    yxk_visitGetElementPtrInst(Out, I);
+  }
+}
 
-void CWriter::visitVAArgInst(VAArgInst &I) {
+void CWriter::yxk_visitVAArgInst(raw_ostream &Out, VAArgInst &I) {
   CurInstr = &I;
 
   headerUseStdarg();
@@ -5957,8 +6279,15 @@ void CWriter::visitVAArgInst(VAArgInst &I) {
   printTypeName(Out, I.getType());
   Out << ");\n ";
 }
+void CWriter::visitVAArgInst(VAArgInst &I) {
+  if(istacap) {
+    yxk_visitVAArgInst(OutHeaders, I);
+  } else {
+    yxk_visitVAArgInst(Out, I);
+  }
+}
 
-void CWriter::visitInsertElementInst(InsertElementInst &I) {
+void CWriter::yxk_visitInsertElementInst(raw_ostream &Out, InsertElementInst &I) {
   CurInstr = &I;
 
   // Start by copying the entire aggregate value into the result variable.
@@ -5975,8 +6304,15 @@ void CWriter::visitInsertElementInst(InsertElementInst &I) {
   Out << "] = ";
   writeOperand(I.getOperand(1), ContextCasted);
 }
+void CWriter::visitInsertElementInst(InsertElementInst &I) {
+  if(istacap) {
+    yxk_visitInsertElementInst(OutHeaders, I);
+  } else {
+    yxk_visitInsertElementInst(Out, I);
+  }
+}
 
-void CWriter::visitExtractElementInst(ExtractElementInst &I) {
+void CWriter::yxk_visitExtractElementInst(raw_ostream &Out, ExtractElementInst &I) {
   CurInstr = &I;
 
   cwriter_assert(!isEmptyType(I.getType()));
@@ -5992,10 +6328,17 @@ void CWriter::visitExtractElementInst(ExtractElementInst &I) {
     Out << "]";
   }
 }
+void CWriter::visitExtractElementInst(ExtractElementInst &I) {
+  if(istacap) {
+    yxk_visitExtractElementInst(OutHeaders, I);
+  } else {
+    yxk_visitExtractElementInst(Out, I);
+  }
+}
 
 // <result> = shufflevector <n x <ty>> <v1>, <n x <ty>> <v2>, <m x i32> <mask>
 // ; yields <m x <ty>>
-void CWriter::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
+void CWriter::yxk_visitShuffleVectorInst(raw_ostream &Out, ShuffleVectorInst &SVI) {
   CurInstr = &SVI;
 
   VectorType *VT = SVI.getType();
@@ -6044,8 +6387,15 @@ void CWriter::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
   }
   Out << ")";
 }
+void CWriter::visitShuffleVectorInst(ShuffleVectorInst &SVI) {
+  if(istacap) {
+    yxk_visitShuffleVectorInst(OutHeaders, SVI);
+  } else {
+    yxk_visitShuffleVectorInst(Out, SVI);
+  }
+}
 
-void CWriter::visitInsertValueInst(InsertValueInst &IVI) {
+void CWriter::yxk_visitInsertValueInst(raw_ostream &Out, InsertValueInst &IVI) {
   CurInstr = &IVI;
 
   // Start by copying the entire aggregate value into the result variable.
@@ -6070,8 +6420,15 @@ void CWriter::visitInsertValueInst(InsertValueInst &IVI) {
   Out << " = ";
   writeOperand(IVI.getOperand(1), ContextCasted);
 }
+void CWriter::visitInsertValueInst(InsertValueInst &IVI) {
+  if(istacap) {
+    yxk_visitInsertValueInst(OutHeaders, IVI);
+  } else {
+    yxk_visitInsertValueInst(Out, IVI);
+  }
+}
 
-void CWriter::visitExtractValueInst(ExtractValueInst &EVI) {
+void CWriter::yxk_visitExtractValueInst(raw_ostream &Out, ExtractValueInst &EVI) {
   CurInstr = &EVI;
 
   Out << "(";
@@ -6092,6 +6449,13 @@ void CWriter::visitExtractValueInst(ExtractValueInst &EVI) {
     }
   }
   Out << ")";
+}
+void CWriter::visitExtractValueInst(ExtractValueInst &EVI) {
+  if(istacap) {
+    yxk_visitExtractValueInst(OutHeaders, EVI);
+  } else {
+    yxk_visitExtractValueInst(Out, EVI);
+  }
 }
 
 [[noreturn]] void CWriter::errorWithMessage(const char *message) {

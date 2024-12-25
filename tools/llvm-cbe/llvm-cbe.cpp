@@ -511,7 +511,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   //                                NoVerify)) {
   // std::cout << "jjjjjjjjjjjjjj"<<std::endl;
   std::cout << "NoVerify:" << NoVerify<<std::endl;
-  if (Target.addPassesToEmitFile(PM, Out->os(), &(TA_hOut->os()), codegen::getFileType(),
+  if (Target.addPassesToEmitFile(PM, Out->os(), &(MOut->os()), codegen::getFileType(),
                                  NoVerify)) {
     errs() << argv[0] << ": target does not support generation of this"
            << " file type!\n";
@@ -519,8 +519,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
   //main.c文件
   NoVerify = 1;
-  std::cout << "NoVerify:" << NoVerify<<std::endl;
-  if (Target.addPassesToEmitFile(PM, MOut->os(), nullptr, codegen::getFileType(),
+  std::cout << "NoVerify:" << NoVerify << std::endl;
+  if (Target.addPassesToEmitFile(PM, TA_hOut->os(), nullptr, codegen::getFileType(),
                                  NoVerify)) {
     errs() << argv[0] << ": target does not support generation of this"
            << " file type!\n";
