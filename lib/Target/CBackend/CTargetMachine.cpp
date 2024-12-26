@@ -29,7 +29,7 @@ bool CTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
                                          MachineModuleInfoWrapperPass *MMI) {
 
   // std::cout << "yyyyyyyyyyyyyy"<<std::endl;
-std::cout << "DisableVerify:" << DisableVerify<<std::endl;
+// std::cout << "DisableVerify:" << DisableVerify<<std::endl;
 
   if (FileType != CodeGenFileType::CGFT_AssemblyFile)
     return true;
@@ -49,10 +49,11 @@ std::cout << "DisableVerify:" << DisableVerify<<std::endl;
   // Lower vector operations into shuffle sequences
   PM.add(createExpandReductionsPass());
 
-  //ta.c,main.c, ta.h文件输出
   if(DisableVerify == 1){
-    PM.add(new llvm_cbe::CWriter(Out, Out, true));
+    //.h文件和.edl文件
+    PM.add(new llvm_cbe::CWriter(Out, *DwoOut, true));
   } else {
+    //app.c和enclave.c
     PM.add(new llvm_cbe::CWriter(Out, *DwoOut, false));
   }
   

@@ -135,7 +135,7 @@ bool createDirectoryStructure(const std::string& root, const std::vector<std::st
 }
 
 
-//ta.c文件
+//enclave.c文件
 static ToolOutputFile *GetOutputStream(const char *TargetName,
                                        Triple::OSType OS,
                                        const char *ProgName) {
@@ -145,15 +145,15 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
       OutputFilename = "-";
     else {
       OutputFilename = GetFileNameRoot(InputFilename);
-      std::cout << OutputFilename <<std::endl;
+      // std::cout << OutputFilename <<std::endl;
 
       switch (codegen::getFileType()) {
       case CodeGenFileType::CGFT_AssemblyFile:
         if (TargetName[0] == 'c') {
           if (TargetName[1] == 0){
-            OutputFilename += "_ta.c";
+            OutputFilename = "Enclave.c";
             //c代码输出的文件名字
-            std::cout << OutputFilename <<std::endl;
+            // std::cout << OutputFilename <<std::endl;
           }
             
           else if (TargetName[1] == 'p' && TargetName[2] == 'p')
@@ -192,7 +192,7 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
   std::error_code error;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
 
-  std::cout << "Binary:"<<Binary <<std::endl;
+  // std::cout << "Binary:"<<Binary <<std::endl;
 
   if (Binary)
     OpenFlags |= sys::fs::OF_Text;
@@ -201,7 +201,7 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
 
   std::string path = "./";
   path += GetFileNameRoot(InputFilename);
-  path += "/ta/";
+  path += "/Enclave/";
   path += OutputFilename;
 
   ToolOutputFile *FDOut =
@@ -215,7 +215,41 @@ static ToolOutputFile *GetOutputStream(const char *TargetName,
   return FDOut;
 }
 
-//main.c文件
+//enclave.edl
+static ToolOutputFile *GetEEDLStream(){
+  // Decide if we need "binary" output.
+  // bool Binary = false;
+  // switch (codegen::getFileType()) {
+  // case CodeGenFileType::CGFT_AssemblyFile:
+  //   break;
+  // case CodeGenFileType::CGFT_ObjectFile:
+  // case CodeGenFileType::CGFT_Null:
+  //   Binary = true;
+  //   break;
+  // }
+  std::string OutEEDLFilename = "./";
+  OutEEDLFilename += GetFileNameRoot(InputFilename);
+  OutEEDLFilename += "/Enclave/";
+  OutEEDLFilename += "Enclave.edl";
+  // Open the file.
+  std::error_code error;
+  sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
+  // if (Binary)
+  //   OpenFlags |= sys::fs::OF_Text;
+  // OutMainFilename = "/home/yxk/t.cbe.c";
+  ToolOutputFile *FDOut =
+      new ToolOutputFile(OutEEDLFilename.c_str(), error, OpenFlags);
+  if (error) {
+    errs() << error.message() << '\n';
+    delete FDOut;
+    return 0;
+  }
+
+  return FDOut;
+}
+
+
+//app.c文件
 static ToolOutputFile *GetMainStream(){
   // Decide if we need "binary" output.
   // bool Binary = false;
@@ -229,8 +263,8 @@ static ToolOutputFile *GetMainStream(){
   // }
   std::string OutMainFilename = "./";
   OutMainFilename += GetFileNameRoot(InputFilename);
-  OutMainFilename += "/host/";
-  OutMainFilename += "main.c";
+  OutMainFilename += "/App/";
+  OutMainFilename += "App.c";
   // Open the file.
   std::error_code error;
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
@@ -247,7 +281,7 @@ static ToolOutputFile *GetMainStream(){
 
   return FDOut;
 }
-//ta.h文件
+//include.h文件
 static ToolOutputFile *GetTA_hStream(){
   // std::cout << "cuowu" <<std::endl;
   // Decide if we need "binary" output.
@@ -263,7 +297,7 @@ static ToolOutputFile *GetTA_hStream(){
 
   std::string OutTA_hFilename = "./";
   OutTA_hFilename += GetFileNameRoot(InputFilename);
-  OutTA_hFilename += "/ta/include/";
+  OutTA_hFilename += "/Include/";
   OutTA_hFilename += GetFileNameRoot(InputFilename);
   OutTA_hFilename += ".h";
   // Open the file.
@@ -271,7 +305,9 @@ static ToolOutputFile *GetTA_hStream(){
   sys::fs::OpenFlags OpenFlags = sys::fs::OF_None;
   if (Binary)
     OpenFlags |= sys::fs::OF_Text;
-  std::cout << OutTA_hFilename <<std::endl;
+
+  // std::cout << OutTA_hFilename <<std::endl;
+
   ToolOutputFile *FDOut =
       new ToolOutputFile(OutTA_hFilename.c_str(), error, OpenFlags);
   if (error) {
@@ -447,9 +483,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   std::string rootDir = GetFileNameRoot(InputFilename);
   // 子目录结构
     std::vector<std::string> subDirs = {
-        "host",
-        "ta",
-        "ta/include"
+        "App",
+        "Enclave",
+        "Include"
     };
   // 创建目录结构并检查是否成功
   if (createDirectoryStructure(rootDir, subDirs)) {
@@ -459,16 +495,20 @@ static int compileModule(char **argv, LLVMContext &Context) {
   }
 
 
-  //ta.c文件
+  //enclave.c文件
   std::unique_ptr<ToolOutputFile> Out(
       GetOutputStream(TheTarget->getName(), TheTriple.getOS(), argv[0]));
   if (!Out)
     return 1;
- //main文件
+  //enclave.edl文件
+  std::unique_ptr<ToolOutputFile> EOut(GetEEDLStream());
+  if (!EOut)
+    return 1;
+ //app.c文件
   std::unique_ptr<ToolOutputFile> MOut(GetMainStream());
   if (!MOut)
     return 1;
-  //ta.h文件
+  //include.h文件
   std::unique_ptr<ToolOutputFile> TA_hOut(GetTA_hStream());
   if (!TA_hOut)
     return 1;
@@ -493,9 +533,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   //将ta.h头文件加入ta.c前面
   std::string OutTA_hFilename = GetFileNameRoot(InputFilename);
   OutTA_hFilename += ".h";
-  std::string text = "#include <";
+  std::string text = "#include \"../Include/";
   text += OutTA_hFilename;
-  text += ">\n";
+  text += "\"\n";
   Out->os() << text;
   MOut->os() << text;
   // Ask the target to add backend passes as necessary.
@@ -507,36 +547,31 @@ static int compileModule(char **argv, LLVMContext &Context) {
   //                                        CodeGenFileType FileType,
   //                                        bool DisableVerify,
   //                                        MachineModuleInfoWrapperPass *MMI)
-  // if (Target.addPassesToEmitFile(PM, Out->os(), MOut->os(), TA_hOut->os(), nullptr, codegen::getFileType(),
-  //                                NoVerify)) {
-  // std::cout << "jjjjjjjjjjjjjj"<<std::endl;
-  std::cout << "NoVerify:" << NoVerify<<std::endl;
+  // std::cout << "1111111111"<<std::endl;
+  // std::cout << "NoVerify" << NoVerify<<std::endl;
   if (Target.addPassesToEmitFile(PM, Out->os(), &(MOut->os()), codegen::getFileType(),
                                  NoVerify)) {
     errs() << argv[0] << ": target does not support generation of this"
            << " file type!\n";
     return 1;
   }
-  //main.c文件
+  //edl include.h文件
   NoVerify = 1;
-  std::cout << "NoVerify:" << NoVerify << std::endl;
-  if (Target.addPassesToEmitFile(PM, TA_hOut->os(), nullptr, codegen::getFileType(),
+  if (Target.addPassesToEmitFile(PM, TA_hOut->os(), &(EOut->os()), codegen::getFileType(),
                                  NoVerify)) {
     errs() << argv[0] << ": target does not support generation of this"
            << " file type!\n";
     return 1;
   }
-
   // Before executing passes, print the final values of the LLVM options.
   cl::PrintOptionValues();
-
   PM.run(*mod);
-
   // Declare success.
   //ta.c，ta.h,main.c保存
   Out->keep();
   TA_hOut->keep();
   MOut->keep();
+  EOut->keep();
 
 
 

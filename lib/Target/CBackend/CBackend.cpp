@@ -69,7 +69,7 @@ std::vector<Function*> FunTEEVec;
 std::vector<std::string> ParamNum;
 bool ParamIndex = false;
 bool isMainfinal = false; //判断是否要输出通道关闭
-bool istacap = false;
+bool istacap = false; //用于判断是否拆分
 
 void InitTEEFunset(Module &M){
   std::regex memsizeRegex(R"(memsize\(([^)]+)\))");
@@ -90,7 +90,7 @@ void InitTEEFunset(Module &M){
         auto anno = cast<ConstantDataArray>(cast<GlobalVariable>(e->getOperand(1))->getOperand(0))->getAsCString();
         // std::cout<<"anno:"<<anno.str()<<std::endl;
 
-        if (anno == "TZ") { FunNameSet.insert(fn); }
+        if (anno == "SGX") { FunNameSet.insert(fn); }
         if (anno == "TAFUN") { FunTEEVec.push_back(fn); }
         std::string tmp = anno.str();
         if (regex_search(tmp, match, memsizeRegex)){
@@ -2578,88 +2578,74 @@ bool CWriter::doInitialization(Module &M) {
   }
   return false;
 }
-//生成ta.h文件的头部
+//生成include.h文件的头部
 bool GetTA_hFirst(raw_ostream &TA_H){
   std::string tmpstr = "#ifndef TA_H_H\n#define TA_H_H\n";
   TA_H << tmpstr;
+  TA_H << "#include \"sgx_error.h\"\n";
+  TA_H << "#include \"sgx_eid.h\"\n";
+  TA_H << "#include \"sgx_urts.h\"\n";
+  TA_H << "sgx_enclave_id_t global_eid = 0;\n";
+  TA_H << "# define ENCLAVE_FILENAME \"enclave.signed.so\"\n";
+  TA_H << "extern sgx_enclave_id_t global_eid;\n";
+  TA_H << "#if defined(__cplusplus)\n";
+  TA_H << "extern \"C\" {\n";
+  TA_H << "#endif\n";
+  TA_H << "#if defined(__cplusplus)\n";
+  TA_H << "}\n";
+  TA_H << "#endif\n";
   TA_H << "\n";
   return true;
 }
-//生成随机uuid
-std::string generateRandomUUID() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint32_t> dist32(0, 0xFFFFFFFF);
-    std::uniform_int_distribution<uint16_t> dist16(0, 0xFFFF);
-    std::uniform_int_distribution<uint8_t> dist8(0, 0xFF);
-
-    std::ostringstream oss;
-
-    oss << "{ 0x" << std::hex << dist32(gen) << ", 0x" << std::hex << dist16(gen) << ", 0x" << std::hex << dist16(gen) << ", \\";
-    oss << "\n";
-    oss << "		{ ";
-    for (int i = 0; i < 8; ++i) {
-        oss << "0x" << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(dist8(gen));
-        if (i != 7) {
-            oss << ", ";
-        }
-    }
-    oss << "} }";
-
-    return oss.str();
-}
 //生成ta.h文件的尾部和uuid
 bool GetTA_hEnd(raw_ostream &TA_H){
-  std::string tmpstr = "#define TA_H_UUID \\";
-  TA_H << tmpstr;
-  TA_H << "\n";
-
-  TA_H << "	";
-  tmpstr = generateRandomUUID();
-  TA_H << tmpstr;
-  TA_H << "\n";
-  TA_H << "\n";
-
   TA_H << "#endif";
   return true;
 }
 
 
 bool GetTAfirst(raw_ostream &TA){
-  TA << "#include <tee_internal_api.h>\n#include <tee_internal_api_extensions.h>\n";
-  TA << "\n";
-  TA << "TEE_Result TA_CreateEntryPoint(void)\n{\n  return TEE_SUCCESS;\n}\nvoid TA_DestroyEntryPoint(void)\n{\n}\nTEE_Result TA_OpenSessionEntryPoint(uint32_t param_types,\n    TEE_Param __maybe_unused params[4],\n   void __maybe_unused **sess_ctx)\n{\n  /* Unused parameters */\n  (void)&params;\n  (void)&sess_ctx;\n  /* If return value != TEE_SUCCESS the session will not be created. */\n return TEE_SUCCESS;\n}\nvoid TA_CloseSessionEntryPoint(void __maybe_unused *sess_ctx)\n{\n  (void)&sess_ctx; /* Unused parameter */\n}";
+  TA << "#include \"Enclave.h\"\n#include \"Enclave_t.h\"\n";
   TA << "\n";
   return true;
 }
 
-bool GetTAend(raw_ostream &TA){
-  TA << "TEE_Result TA_InvokeCommandEntryPoint(void __maybe_unused *sess_ctx,\n";
-  TA << "			uint32_t cmd_id,\n";
-  TA << "			uint32_t param_types, TEE_Param params[4])\n";
-  TA << "{\n";
-  TA << "	(void)&sess_ctx; /* Unused parameter */\n";
-  TA << "\n";
-  TA << "	switch (cmd_id) {\n";
+bool GetEDL(raw_ostream &TA_H){
+  std::string tmpstr = "enclave {\n";
+  TA_H << tmpstr;
+  TA_H << " trusted {\n";
+  TA_H << "   public void ";
   for(int i = 0; i < FunTEEVec.size(); i++){
-    TA << "	case " << i<<":\n";
-    TA << "		return " << (FunTEEVec[i]->getName()).str()<<"(";
+    TA_H << (FunTEEVec[i]->getName()).str() << "(";
     int l = FunParamMap[FunTEEVec[i]].size();
     for(int j = 0; j < l; j++){
-      if(j != 0) TA << ", ";
-      TA << "params[" << j << "].memref.buffer";
+      if(j != 0) {
+        TA_H << ", ";
+      }
+      TA_H << "[out, in, size=";
+      int n = FunParamMap[FunTEEVec[i]][j];
+      TA_H << n << "] void* _" << j;
     }
+    TA_H << ");\n";
   }
-  TA << ");\n";
-  TA << "	default:\n";
-  TA << "		return TEE_ERROR_BAD_PARAMETERS;\n";
-  TA << "	}\n";
-  TA << "}";
+  TA_H << " };\n";
+
+  //填充untrusted部分
+
+  TA_H << "};";
+  TA_H << "\n";
   return true;
 }
 
 void GetMainfirst(raw_ostream &Main){
-  Main << "#include <tee_client_api.h>\n";
+  Main << "#include \"Enclave_u.h\"\n";
+  Main << "\n";
+  Main << "int initialize_enclave(void)\n";
+  Main << "{\n";
+  Main << "    sgx_status_t ret = SGX_ERROR_UNEXPECTED;\n";
+  Main << "    ret = sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, NULL, NULL, &global_eid, NULL);\n";
+  Main << "    return 0;\n";
+  Main << "}\n";
 }
 // std::unordered_set<std::string> FunNameSet;
 // std::unordered_map<std::string,std::vector<int>> FunParamMap;
@@ -2698,18 +2684,13 @@ bool CWriter::doFinalization(Module &M) {
     _Out.clear();
     _OutHeaders.clear();
 
-    // GetMainfirst(FileOut);
-    // FileOut << methods;
     GetTA_hFirst(FileOut);
     FileOut << header;
     GetTA_hEnd(FileOut);
-    // GetTAfirst(FileOut);
-    // FileOut << header;
-    // GetTAend(FileOut);
 
-    // ClearTEEFun();
+    GetEDL(TA_HOut);
   } else {
-    std::cout << "tac------"<<std::endl;
+    // std::cout << "tac------"<<std::endl;
 
     std::string methods = Out.str();
     _Out.clear();
@@ -2731,7 +2712,7 @@ bool CWriter::doFinalization(Module &M) {
     //TA.c
     GetTAfirst(FileOut);
     FileOut << methods;
-    GetTAend(FileOut);
+    // GetTAend(FileOut);
     //ta.h
     GetMainfirst(TA_HOut);
     TA_HOut << mains;
@@ -4096,15 +4077,9 @@ void CWriter::yxk_printFunction(raw_ostream &Out, Function &F) {
     if(Name == "main") {
       isMainfinal = true;
       Out << "\n";
-      Out << "  TEEC_Result res;\n";
-      Out << "  TEEC_Context ctx;\n";
-      Out << "  TEEC_Session sess;\n";
-      Out << "  TEEC_Operation op;\n";
-      Out << "  TEEC_UUID uuid = TA_H_UUID;\n";
-      Out << "  uint32_t err_origin;\n";
-      Out << "  res = TEEC_InitializeContext(NULL, &ctx);\n";
-      Out << "  res = TEEC_OpenSession(&ctx, &sess, &uuid,\n";
-      Out << "            TEEC_LOGIN_PUBLIC, NULL, NULL, &err_origin);\n";
+      Out << "  if(initialize_enclave() < 0){\n";
+      Out << "    return -1;\n";
+      Out << "  }\n";
       Out << "\n";
     }
 
@@ -4350,10 +4325,9 @@ void CWriter::printBasicBlock(BasicBlock *BB) {
 // necessary because we use the instruction classes as opaque types...
 void CWriter::yxk_visitReturnInst(raw_ostream &Out, ReturnInst &I) {
   if(isMainfinal) {
-    Out << "\n";
-    Out << "  TEEC_CloseSession(&sess);\n";
-    Out << "  TEEC_FinalizeContext(&ctx);\n";
-    isMainfinal = false;
+      Out << "\n";
+      Out << "  sgx_destroy_enclave(global_eid);\n";
+      isMainfinal = false;
   }
   CurInstr = &I;
 
@@ -5416,7 +5390,6 @@ void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
   for(int i = 0; i < FunTEEVec.size(); i++){
     if(fname == (FunTEEVec[i]->getName()).str()){
       ParamIndex = true;
-      Out << "//";
     }
   }
 
@@ -5475,16 +5448,20 @@ void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
     //调用函数的函数名
     cwriter_assert(isa<Function>(Callee));
     // fname = GetValueName(Callee).str();
-    if(fname == "tee_wait") {
-      Out << "TEE_Wait";
-    } else {
-        Out << GetValueName(Callee);
-    }
+    // if(fname == "tee_wait") {
+    //   Out << "TEE_Wait";
+    // } else {
+    Out << GetValueName(Callee);
+    // }
     
     // std::cout << GetValueName(Callee) <<std::endl;
   }
 
-  Out << "(";
+  if(ParamIndex) {
+    Out << "(global_eid, ";
+  } else {
+      Out << "(";
+  }
 
   bool PrintedArg = false;
   FunctionType *FTy = I.getFunctionType();
@@ -5529,56 +5506,13 @@ void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
     }
     // Check if the argument is expected to be passed by value.
     if (I.getAttributes().hasAttributeAtIndex(ArgNo + 1, Attribute::ByVal)){
-      // Out << "hhhhhh";
       writeOperandDeref(*AI);}
     else{
-      // Out << "hhhhhh";
       //调用函数的参数
       writeOperand(*AI, ContextCasted);}
     PrintedArg = true;
   }
   Out << ')';
-
-
-  // std::unordered_set<Function*> FunNameSet;
-  // std::unordered_map<Function*, std::vector<int>> FunParamMap;
-  // std::vector<Function*> FunTEEVec;
-  
-  for(int i = 0; i < FunTEEVec.size(); i++){
-    
-    if(fname == (FunTEEVec[i]->getName()).str()){
-      Out << "\n";
-      Out << "  memset(&op, 0, sizeof(op));\n";
-      Out << "  op.paramTypes = TEEC_PARAM_TYPES(";
-      for(int j = 0; j < NumDeclaredParams; j++){
-        if(j != 0) Out << ", ";
-        Out << "TEEC_MEMREF_TEMP_INOUT";
-      }
-      for(int j = 0; j < 4 - NumDeclaredParams; j++){
-        Out << ", TEEC_NONE";
-      }
-      Out << ");\n";
-
-      for(int j = 0; j < NumDeclaredParams; j++){
-        Out << "  op.params[" << j << "].tmpref.buffer = &";
-        Out << ParamNum[j]<<";\n";
-        Out << "  op.params[" << j << "].tmpref.size = ";
-        int n = 0;
-
-        for (auto &pair : FunParamMap) {
-        Function* fn = pair.first;
-        std::vector<int> params = pair.second;
-        if (fname == (fn->getName()).str()) {
-            n = params[j];
-        }
-        }
-
-        Out << n << ";\n";
-      }
-
-      Out << "  TEEC_InvokeCommand(&sess, "<<i<<", &op, &err_origin)";
-    }
-  }
   ParamIndex = false;
   ParamNum.clear();
 }
