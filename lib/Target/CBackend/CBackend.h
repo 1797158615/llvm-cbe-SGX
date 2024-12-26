@@ -287,7 +287,9 @@ private:
   void printContainedTypes(raw_ostream &Out, Type *Ty, std::set<Type *> &);
 
   void printFloatingPointConstants(Function &F);
+  void yxk_printFloatingPointConstants(raw_ostream &Out, Function &F);
   void printFloatingPointConstants(const Constant *C);
+  void yxk_printFloatingPointConstants(raw_ostream &Out, const Constant *C);
 
   void printFunction(Function &);
   void yxk_printFunction(raw_ostream &Out, Function &);

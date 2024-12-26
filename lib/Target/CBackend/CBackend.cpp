@@ -577,6 +577,7 @@ void CWriter::headerUseFCmpOp(CmpInst::Predicate P) {
 
 raw_ostream &CWriter::printSimpleType(raw_ostream &Out, Type *Ty,
                                       bool isSigned) {
+  // Out << "yyyy";
   cwriter_assert((Ty->isSingleValueType() || Ty->isVoidTy()) &&
                  "Invalid type for printSimpleType");
   switch (Ty->getTypeID()) {
@@ -1204,12 +1205,14 @@ void CWriter::yxk_printCast(raw_ostream &Out, unsigned opc, Type *SrcTy, Type *D
   case Instruction::UIToFP:
   case Instruction::ZExt:
     Out << '(';
+    // Out << "ttttt";
     printSimpleType(Out, SrcTy, false);
     Out << ')';
     break;
   case Instruction::SIToFP:
   case Instruction::SExt:
     Out << '(';
+    // Out << "ttttt";
     printSimpleType(Out, SrcTy, true);
     Out << ')';
     break;
@@ -1239,6 +1242,7 @@ void CWriter::printCast(unsigned opc, Type *SrcTy, Type *DstTy) {
 
 // printConstant - The LLVM Constant to C Constant converter.
 void CWriter::yxk_printConstant(raw_ostream &Out, Constant *CPV, enum OperandContext Context) {
+  // Out << "PPPP";
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(CPV)) {
     // TODO: VectorType are valid here, but not supported
     if (!CE->getType()->isIntegerTy() && !CE->getType()->isFloatingPointTy() &&
@@ -1460,6 +1464,7 @@ void CWriter::yxk_printConstant(raw_ostream &Out, Constant *CPV, enum OperandCon
         Out << ")";
     } else if (Ty->getPrimitiveSizeInBits() < 32 && Context == ContextNormal) {
       Out << "((";
+      // Out << "ttttt";
       printSimpleType(Out, Ty, false) << ')';
       if (CI->isMinValue(true))
         Out << CI->getZExtValue() << 'u';
@@ -1777,6 +1782,7 @@ void CWriter::yxk_printConstantWithCast(raw_ostream &Out, Constant *CPV, unsigne
   // operand.
   if (shouldCast) {
     Out << "((";
+    // Out << "ttttt";
     printSimpleType(Out, OpTy, typeIsSigned);
     Out << ")";
     printConstant(CPV, ContextCasted);
@@ -1871,7 +1877,7 @@ void CWriter::yxk_writeOperandInternal(raw_ostream &Out, Value *Operand,
   if (Instruction *I = dyn_cast<Instruction>(Operand))
     // Should we inline this instruction to build a tree?
     if (isInlinableInst(*I) && !isDirectAlloca(I)) {
-      Out << '(';
+      Out << "(";
       writeInstComputationInline(*I);
       Out << ')';
       return;
@@ -1886,9 +1892,7 @@ void CWriter::yxk_writeOperandInternal(raw_ostream &Out, Value *Operand,
     //调用函数参数
     std::string pnum = GetValueName(Operand);
     Out << pnum;
-    if(ParamIndex){
-      ParamNum.push_back(pnum);
-    }}
+    }
 }
 void CWriter::writeOperandInternal(Value *Operand,
                                    enum OperandContext Context) {
@@ -1964,6 +1968,7 @@ bool CWriter::yxk_writeInstructionCast(raw_ostream &Out, Instruction &I) {
   case Instruction::URem:
   case Instruction::UDiv:
     Out << "((";
+    // Out << "ttttt";
     printSimpleType(Out, Ty, false);
     Out << ")(";
     return true;
@@ -1971,6 +1976,7 @@ bool CWriter::yxk_writeInstructionCast(raw_ostream &Out, Instruction &I) {
   case Instruction::SRem:
   case Instruction::SDiv:
     Out << "((";
+    // Out << "ttttt";
     printSimpleType(Out, Ty, true);
     Out << ")(";
     return true;
@@ -2037,6 +2043,7 @@ void CWriter::yxk_writeOperandWithCast(raw_ostream &Out, Value *Operand, unsigne
   opcodeNeedsCast(Opcode, shouldCast, castIsSigned);
   if (shouldCast) {
     Out << "((";
+    // Out << "ttttt";
     printSimpleType(Out, Operand->getType(), castIsSigned);
     Out << ")";
     writeOperand(Operand, ContextCasted);
@@ -2062,6 +2069,7 @@ void CWriter::yxk_writeVectorOperandWithCast(raw_ostream &Out, Value *Operand, u
   opcodeNeedsCast(Opcode, shouldCast, castIsSigned);
   if (shouldCast) {
     Out << "((";
+    // Out << "ttttt";
     printSimpleType(Out, cast<VectorType>(Operand->getType())->getElementType(),
                     castIsSigned);
     Out << ")";
@@ -2084,7 +2092,7 @@ void CWriter::writeVectorOperandWithCast(Value *Operand, unsigned Index,
 
 // Write the operand with a cast to another type based on the icmp predicate
 // being used.
-void CWriter::writeOperandWithCast(Value *Operand, ICmpInst &Cmp) {
+void CWriter::yxk_writeOperandWithCast(raw_ostream &Out, Value *Operand, ICmpInst &Cmp) {
   // This has to do a cast to ensure the operand has the right signedness.
   // Also, if the operand is a pointer, we make sure to cast to an integer when
   // doing the comparison both for signedness and so that the C compiler doesn't
@@ -2108,10 +2116,18 @@ void CWriter::writeOperandWithCast(Value *Operand, ICmpInst &Cmp) {
     OpTy = TD->getIntPtrType(Operand->getContext());
 
   Out << "((";
+  // Out << "ttttt";
   printSimpleType(Out, OpTy, castIsSigned);
   Out << ")";
   writeOperand(Operand);
   Out << ")";
+}
+void CWriter::writeOperandWithCast(Value *Operand, ICmpInst &Cmp) {
+  if(istacap) {
+    yxk_writeOperandWithCast(OutHeaders, Operand, Cmp);
+  } else {
+    yxk_writeOperandWithCast(Out, Operand, Cmp);
+  }
 }
 
 static void defineConstantDoubleTy(raw_ostream &Out) {
@@ -3834,7 +3850,7 @@ void CWriter::declareOneGlobalVariable(GlobalVariable *I) {
 }
 
 /// Output all floating point constants that cannot be printed accurately...
-void CWriter::printFloatingPointConstants(Function &F) {
+void CWriter::yxk_printFloatingPointConstants(raw_ostream &Out, Function &F) {
   // Scan the module for floating point constants.  If any FP constant is used
   // in the function, we want to redirect it here so that we do not depend on
   // the precision of the printed form, unless the printed form preserves
@@ -3846,8 +3862,15 @@ void CWriter::printFloatingPointConstants(Function &F) {
         printFloatingPointConstants(C);
   Out << '\n';
 }
+void CWriter::printFloatingPointConstants(Function &F) {
+  if(istacap) {
+    yxk_printFloatingPointConstants(OutHeaders, F);
+  } else {
+    yxk_printFloatingPointConstants(Out, F);
+  }
+}
 
-void CWriter::printFloatingPointConstants(const Constant *C) {
+void CWriter::yxk_printFloatingPointConstants(raw_ostream &Out, const Constant *C) {
   // If this is a constant expression, recursively check for constant fp values.
   if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
     for (unsigned i = 0, e = CE->getNumOperands(); i != e; ++i)
@@ -3897,6 +3920,13 @@ void CWriter::printFloatingPointConstants(const Constant *C) {
         << "}; /* Long double constant */\n";
   } else {
     errorWithMessage("Unknown float type!");
+  }
+}
+void CWriter::printFloatingPointConstants(const Constant *C) {
+  if(istacap) {
+    yxk_printFloatingPointConstants(OutHeaders, C);
+  } else {
+    yxk_printFloatingPointConstants(Out, C);
   }
 }
 
