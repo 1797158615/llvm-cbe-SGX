@@ -66,6 +66,7 @@ using namespace llvm;
 std::unordered_set<Function*> FunNameSet;
 std::unordered_map<Function*, std::vector<int>> FunParamMap;
 std::vector<Function*> FunTEEVec;
+std::vector<Function*> FunCAVec;
 std::vector<std::string> ParamNum;
 bool ParamIndex = false;
 bool isMainfinal = false; //判断是否要输出通道关闭
@@ -76,22 +77,16 @@ void InitTEEFunset(Module &M){
   std::smatch match;
   auto global_annos = M.getNamedGlobal("llvm.global.annotations");
   if (global_annos) {
-    //fds
-    // std::cout<<"11111111111"<<std::endl;
     auto a = cast<ConstantArray>(global_annos->getOperand(0));
-    //ds
-    // std::cout<<"i="<<a->getNumOperands()<<std::endl;
     for (int i=0; i<a->getNumOperands(); i++) {
       auto e = cast<ConstantStruct>(a->getOperand(i));
-      // std::cout<<"eeeeeeeeeeeee"<<std::endl;
       if (auto fn = dyn_cast<Function>(e->getOperand(0))) {
-        // std::cout<<"ffffffffffffffff"<<std::endl;
-        // std::cout<<"ffffffffffffffff:"<<(fn->getName()).str()<<std::endl;
+        
         auto anno = cast<ConstantDataArray>(cast<GlobalVariable>(e->getOperand(1))->getOperand(0))->getAsCString();
-        // std::cout<<"anno:"<<anno.str()<<std::endl;
 
         if (anno == "SGX") { FunNameSet.insert(fn); }
         if (anno == "TAFUN") { FunTEEVec.push_back(fn); }
+        if (anno == "CAFUN") { FunCAVec.push_back(fn); }
         std::string tmp = anno.str();
         if (regex_search(tmp, match, memsizeRegex)){
           std::string args = match[1];
@@ -114,6 +109,7 @@ void ClearTEEFun(){
   FunNameSet.clear();    // 清空 FunNameSet
   FunParamMap.clear();   // 清空 FunParamMap
   FunTEEVec.clear();     // 清空 FunTEEVec
+  FunCAVec.clear();
 
 }
 
@@ -2647,6 +2643,22 @@ bool GetEDL(raw_ostream &TA_H){
   TA_H << " };\n";
 
   //填充untrusted部分
+  TA_H << " untrusted {\n";
+  TA_H << "   void ";
+  for(int i = 0; i < FunCAVec.size(); i++){
+    TA_H << (FunCAVec[i]->getName()).str() << "(";
+    int l = FunParamMap[FunCAVec[i]].size();
+    for(int j = 0; j < l; j++){
+      if(j != 0) {
+        TA_H << ", ";
+      }
+      TA_H << "[out, in, size=";
+      int n = FunParamMap[FunCAVec[i]][j];
+      TA_H << n << "] void* _" << j;
+    }
+    TA_H << ");\n";
+  }
+  TA_H << " };\n";
 
   TA_H << "};";
   TA_H << "\n";
