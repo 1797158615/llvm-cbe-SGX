@@ -2626,8 +2626,8 @@ bool GetEDL(raw_ostream &TA_H){
   std::string tmpstr = "enclave {\n";
   TA_H << tmpstr;
   TA_H << " trusted {\n";
-  TA_H << "   public void ";
   for(int i = 0; i < FunTEEVec.size(); i++){
+    TA_H << "   public void ";
     TA_H << (FunTEEVec[i]->getName()).str() << "(";
     int l = FunParamMap[FunTEEVec[i]].size();
     for(int j = 0; j < l; j++){
@@ -2644,8 +2644,8 @@ bool GetEDL(raw_ostream &TA_H){
 
   //填充untrusted部分
   TA_H << " untrusted {\n";
-  TA_H << "   void ";
   for(int i = 0; i < FunCAVec.size(); i++){
+    TA_H << "   void ";
     TA_H << (FunCAVec[i]->getName()).str() << "(";
     int l = FunParamMap[FunCAVec[i]].size();
     for(int j = 0; j < l; j++){
