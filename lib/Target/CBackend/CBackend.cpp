@@ -2825,8 +2825,8 @@ void CWriter::generateHeader(Module &M) {
   // Provide a definition for `bool' if not compiling with a C++ compiler.
 
   //ta.h删除部分字符串
-  // OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
-  // OutHeaders << "\n";
+  OutHeaders << "#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n";
+  OutHeaders << "\n";
 
   Out << "\n\n/* Global Declarations */\n";
 
@@ -5500,7 +5500,7 @@ void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
   }
 
   if(ParamIndex) {
-    Out << "(global_eid, ";
+    Out << "(global_eid";
   } else {
       Out << "(";
   }
@@ -5514,6 +5514,9 @@ void CWriter::yxk_visitCallInst(raw_ostream &Out, CallInst &I) {
 
   //调用函数的参数数量
   unsigned NumDeclaredParams = FTy->getNumParams();
+  if(NumDeclaredParams != 0 && ParamIndex) {
+    Out << ", ";
+  }
   // std::cout << NumDeclaredParams<<std::endl;
   auto CS(&I);
   auto AI = CS->arg_begin(), AE = CS->arg_end();
